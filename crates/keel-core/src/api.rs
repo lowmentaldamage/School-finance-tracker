@@ -9,7 +9,10 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::error::{CoreError, CoreResult};
-use crate::repo::{accounts, categories, currencies, settings, tags, transactions};
+use crate::repo::{
+    accounts, budgets, categories, currencies, goals, rates, recurring, reports, settings, tags,
+    transactions,
+};
 
 fn args<T: DeserializeOwned>(v: Value) -> CoreResult<T> {
     serde_json::from_value(v).map_err(|_| CoreError::validation("args", "malformed arguments"))
@@ -90,6 +93,60 @@ fn default_limit() -> u32 {
     8
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CategoryReportArg {
+    range: reports::Range,
+    kind: String,
+    #[serde(default)]
+    parent_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MonthArg {
+    month: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HistoryArg {
+    end_month: String,
+    #[serde(default = "default_months")]
+    count: u32,
+}
+
+fn default_months() -> u32 {
+    6
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DaysArg {
+    #[serde(default = "default_days")]
+    days: u32,
+}
+
+fn default_days() -> u32 {
+    30
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OccurrenceArg {
+    rule_id: String,
+    occurrence_date: String,
+    #[serde(default)]
+    overrides: recurring::ConfirmOverrides,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GoalStatusArg {
+    id: String,
+    status: goals::GoalStatus,
+}
+
 /// Names of all commands, for documentation and tests.
 pub const COMMANDS: &[&str] = &[
     "settings.all",
@@ -115,6 +172,34 @@ pub const COMMANDS: &[&str] = &[
     "transactions.delete",
     "transactions.delete_many",
     "transactions.payees",
+    "rates.list",
+    "rates.upsert",
+    "rates.delete",
+    "reports.summary",
+    "reports.cashflow",
+    "reports.by_category",
+    "reports.balances",
+    "reports.net_worth",
+    "reports.active_months",
+    "budgets.month",
+    "budgets.set",
+    "budgets.history",
+    "recurring.list",
+    "recurring.get",
+    "recurring.create",
+    "recurring.update",
+    "recurring.delete",
+    "recurring.upcoming",
+    "recurring.confirm",
+    "recurring.skip",
+    "goals.list",
+    "goals.create",
+    "goals.update",
+    "goals.set_status",
+    "goals.delete",
+    "goals.contributions",
+    "goals.contribute",
+    "goals.delete_contribution",
 ];
 
 pub fn dispatch(conn: &Connection, cmd: &str, a: Value) -> CoreResult<Value> {
@@ -184,6 +269,88 @@ pub fn dispatch(conn: &Connection, cmd: &str, a: Value) -> CoreResult<Value> {
             let p: PayeeArg = args(a)?;
             ok(transactions::recent_payees(conn, &p.prefix, p.limit)?)
         }
+
+        "rates.list" => ok(rates::list(conn)?),
+        "rates.upsert" => ok(rates::upsert(conn, &args::<CreateArg<_>>(a)?.input)?),
+        "rates.delete" => {
+            rates::delete(conn, &args::<IdArg>(a)?.id)?;
+            ok(json!(null))
+        }
+
+        "reports.summary" => ok(reports::summary(conn, &args::<reports::Range>(a)?)?),
+        "reports.cashflow" => ok(reports::cashflow_by_month(
+            conn,
+            &args::<reports::Range>(a)?,
+        )?),
+        "reports.by_category" => {
+            let p: CategoryReportArg = args(a)?;
+            ok(reports::by_category(
+                conn,
+                &p.range,
+                &p.kind,
+                p.parent_id.as_deref(),
+            )?)
+        }
+        "reports.balances" => ok(reports::balances(conn)?),
+        "reports.net_worth" => ok(reports::net_worth_series(
+            conn,
+            &args::<reports::Range>(a)?,
+        )?),
+        "reports.active_months" => ok(reports::active_months(conn)?),
+
+        "budgets.month" => ok(budgets::for_month(conn, &args::<MonthArg>(a)?.month)?),
+        "budgets.set" => {
+            budgets::set(conn, &args::<CreateArg<_>>(a)?.input)?;
+            ok(json!(null))
+        }
+        "budgets.history" => {
+            let p: HistoryArg = args(a)?;
+            ok(budgets::history(conn, &p.end_month, p.count)?)
+        }
+
+        "recurring.list" => ok(recurring::list(conn)?),
+        "recurring.get" => ok(recurring::get(conn, &args::<IdArg>(a)?.id)?),
+        "recurring.create" => ok(recurring::create(conn, &args::<CreateArg<_>>(a)?.input)?),
+        "recurring.update" => {
+            let p: UpdateArg<recurring::RuleInput> = args(a)?;
+            ok(recurring::update(conn, &p.id, &p.input)?)
+        }
+        "recurring.delete" => {
+            recurring::delete(conn, &args::<IdArg>(a)?.id)?;
+            ok(json!(null))
+        }
+        "recurring.upcoming" => ok(recurring::upcoming(conn, args::<DaysArg>(a)?.days)?),
+        "recurring.confirm" => {
+            let p: OccurrenceArg = args(a)?;
+            ok(recurring::confirm(
+                conn,
+                &p.rule_id,
+                &p.occurrence_date,
+                &p.overrides,
+            )?)
+        }
+        "recurring.skip" => {
+            let p: OccurrenceArg = args(a)?;
+            ok(recurring::skip(conn, &p.rule_id, &p.occurrence_date)?)
+        }
+
+        "goals.list" => ok(goals::list(conn)?),
+        "goals.create" => ok(goals::create(conn, &args::<CreateArg<_>>(a)?.input)?),
+        "goals.update" => {
+            let p: UpdateArg<goals::GoalInput> = args(a)?;
+            ok(goals::update(conn, &p.id, &p.input)?)
+        }
+        "goals.set_status" => {
+            let p: GoalStatusArg = args(a)?;
+            ok(goals::set_status(conn, &p.id, p.status)?)
+        }
+        "goals.delete" => {
+            goals::delete(conn, &args::<IdArg>(a)?.id)?;
+            ok(json!(null))
+        }
+        "goals.contributions" => ok(goals::contributions(conn, &args::<IdArg>(a)?.id)?),
+        "goals.contribute" => ok(goals::contribute(conn, &args::<CreateArg<_>>(a)?.input)?),
+        "goals.delete_contribution" => ok(goals::delete_contribution(conn, &args::<IdArg>(a)?.id)?),
 
         _ => Err(CoreError::validation("cmd", "unknown command")),
     }

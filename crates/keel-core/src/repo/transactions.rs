@@ -351,6 +351,15 @@ fn clean(
     })
 }
 
+/// Validate an input without writing. Returns the effective destination amount for transfers.
+pub fn check(
+    conn: &Connection,
+    input: &TransactionInput,
+    existing: Option<&Transaction>,
+) -> CoreResult<Option<i64>> {
+    Ok(clean(conn, input, existing)?.to_amount_minor)
+}
+
 pub fn create(conn: &Connection, input: &TransactionInput) -> CoreResult<Transaction> {
     create_inner(conn, input, None)
 }

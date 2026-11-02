@@ -1,6 +1,11 @@
 pub mod accounts;
+pub mod budgets;
 pub mod categories;
 pub mod currencies;
+pub mod goals;
+pub mod rates;
+pub mod recurring;
+pub mod reports;
 pub mod settings;
 pub mod tags;
 pub mod transactions;
