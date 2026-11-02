@@ -4,6 +4,7 @@ on:
   push:
     branches: ['**']
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -43,31 +44,111 @@ jobs:
           cargo clippy --workspace --all-targets -- -D warnings
       - name: Rust tests (core and database)
         run: cargo test -p keel-core
-      - name: End-to-end smoke test
+      - name: End-to-end smoke test (browser)
         run: |
           npm install --no-save playwright
           npx playwright install --with-deps chromium
           npm run e2e
 
-  windows:
-    name: Windows installer
-    needs: test
-    runs-on: windows-latest
+  android:
+    name: Android APK
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 27.2.12479018
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Android NDK
+        run: |
+          sdkmanager --install "ndk;${NDK_VERSION}"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
       - run: npm ci
-      - name: Build installers (unsigned)
-        run: npx tauri build
+      - name: Release signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          KS="$RUNNER_TEMP/keel-release.jks"
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$KS"
+            echo "SIGNING=release" >> "$GITHUB_ENV"
+          else
+            # No release key configured: sign with a throwaway key so the APK can be installed for testing.
+            KEYSTORE_PASSWORD=ci-test-only; KEY_ALIAS=keel-test; KEY_PASSWORD=ci-test-only
+            keytool -genkeypair -v -keystore "$KS" -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" \
+              -alias "$KEY_ALIAS" -keyalg RSA -keysize 4096 -validity 30 -dname "CN=Keel CI test"
+            echo "SIGNING=test" >> "$GITHUB_ENV"
+          fi
+          {
+            echo "storeFile=$KS"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > src-tauri/gen/android/keystore.properties
+      - name: Build release APK (all ABIs)
+        run: npx tauri android build --apk
+      - name: Build debug APK for emulator test (x86_64)
+        run: npx tauri android build --apk --debug --target x86_64
+      - name: Collect APKs
+        run: |
+          mkdir -p dist-android
+          cp src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk "dist-android/keel-${SIGNING}-signed-universal.apk"
+          cp src-tauri/gen/android/app/build/outputs/apk/x86_64/debug/*.apk dist-android/keel-debug-x86_64.apk || \
+            cp src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk dist-android/keel-debug-x86_64.apk
+          ls -la dist-android
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt2" dump permissions "dist-android/keel-${SIGNING}-signed-universal.apk" || true
       - uses: actions/upload-artifact@v4
         with:
-          name: keel-windows
-          path: |
-            target/release/bundle/msi/*.msi
-            target/release/bundle/nsis/*.exe
+          name: keel-android
+          path: dist-android/*.apk
           if-no-files-found: error
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install Playwright client
+        run: npm install --no-save playwright
+      - name: Emulator tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb install -r dist-android/keel-debug-x86_64.apk
+            SHOTS_DIR=android-shots node e2e/android-smoke.mjs
+            adb uninstall com.keel.finance
+            adb install -r "dist-android/keel-${SIGNING}-signed-universal.apk"
+            adb shell am start -W -n com.keel.finance/.MainActivity
+            sleep 8
+            adb shell pidof com.keel.finance
+            adb exec-out screencap -p > android-shots/10-release-launch.png
+            adb shell uiautomator dump /sdcard/ui.xml >/dev/null && adb shell cat /sdcard/ui.xml | grep -o 'Welcome to Keel' | head -1
+            adb shell dumpsys package com.keel.finance | grep -E "android.permission|allowBackup|flags=" | head -20
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-screenshots
+          path: android-shots/

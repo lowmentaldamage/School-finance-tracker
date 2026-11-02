@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#26282C</color>
+    <color name="keel_bg_light">#F3F3F4</color>
+    <color name="keel_bg_dark">#151617</color>
+    <color name="keel_splash_icon_bg">#26282C</color>
+</resources>

@@ -90,13 +90,23 @@ pub fn load_or_create(dir: &Path, protector: &dyn DeviceProtector) -> CoreResult
         );
         let file: KeystoreFile =
             serde_json::from_str(&raw).map_err(|_| ks_err("the key file is damaged"))?;
+        let wrapped = Zeroizing::new(
+            from_hex(&file.device.data).ok_or_else(|| ks_err("the key file is damaged"))?,
+        );
+        if file.device.scheme == "plain" && protector.scheme() != "plain" {
+            // Upgrade an unprotected key file: wrap the existing key with the platform protector.
+            let bytes: [u8; 32] = wrapped
+                .as_slice()
+                .try_into()
+                .map_err(|_| ks_err("the key file is damaged"))?;
+            write_keystore(dir, protector, &bytes)?;
+            return Ok(DbKey::from_bytes(bytes));
+        }
         if file.device.scheme != protector.scheme() {
             return Err(ks_err(
                 "the key file was created with a different protection method",
             ));
         }
-        let wrapped =
-            from_hex(&file.device.data).ok_or_else(|| ks_err("the key file is damaged"))?;
         let plain =
             Zeroizing::new(protector.unprotect(&wrapped).map_err(|_| {
                 ks_err("the key cannot be unlocked on this device or user account")
@@ -112,8 +122,14 @@ pub fn load_or_create(dir: &Path, protector: &dyn DeviceProtector) -> CoreResult
     }
     let mut bytes = Zeroizing::new([0u8; 32]);
     getrandom::fill(bytes.as_mut()).map_err(|_| ks_err("the system random generator failed"))?;
+    write_keystore(dir, protector, &bytes)?;
+    Ok(DbKey::from_bytes(*bytes))
+}
+
+fn write_keystore(dir: &Path, protector: &dyn DeviceProtector, key: &[u8; 32]) -> CoreResult<()> {
+    let ks = keystore_path(dir);
     let wrapped = protector
-        .protect(bytes.as_ref())
+        .protect(key)
         .map_err(|_| ks_err("the key cannot be protected"))?;
     let file = KeystoreFile {
         version: 1,
@@ -129,7 +145,7 @@ pub fn load_or_create(dir: &Path, protector: &dyn DeviceProtector) -> CoreResult
     let _ = fs::remove_file(&tmp);
     write_private(&tmp, json.as_bytes()).map_err(|_| ks_err("cannot write the key file"))?;
     fs::rename(&tmp, &ks).map_err(|_| ks_err("cannot write the key file"))?;
-    Ok(DbKey::from_bytes(*bytes))
+    Ok(())
 }
 
 /// Write a file readable only by the current user (mode 0600 on Unix-like systems, including Android).
@@ -194,6 +210,18 @@ mod tests {
             load_or_create(dir.path(), &PlainProtector),
             Err(CoreError::Keystore { .. })
         ));
+    }
+
+    #[test]
+    fn plain_key_file_is_upgraded_to_protected() {
+        let dir = tempfile::tempdir().unwrap();
+        let k1 = load_or_create(dir.path(), &PlainProtector).unwrap();
+        let k2 = load_or_create(dir.path(), &XorProtector).unwrap();
+        assert_eq!(k1.as_bytes(), k2.as_bytes());
+        let stored = fs::read_to_string(keystore_path(dir.path())).unwrap();
+        assert!(stored.contains("xor-test"));
+        let k3 = load_or_create(dir.path(), &XorProtector).unwrap();
+        assert_eq!(k1.as_bytes(), k3.as_bytes());
     }
 
     #[test]

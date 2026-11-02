@@ -2,98 +2,79 @@
 
 use keel_core::keystore::DeviceProtector;
 
-#[cfg(windows)]
-pub fn platform() -> Box<dyn DeviceProtector> {
-    Box::new(dpapi::Dpapi)
+#[cfg(target_os = "android")]
+pub fn platform<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Box<dyn DeviceProtector> {
+    use tauri::Manager;
+    match app.try_state::<android::NativeHandle<R>>() {
+        Some(h) => Box::new(android::AndroidKeystore(h.0.clone())),
+        None => Box::new(keel_core::keystore::PlainProtector),
+    }
 }
 
-/// Android Keystore wrapping is Phase 5 work; until then the key file is stored unwrapped
-/// inside the app's private storage (inaccessible to other apps on non-rooted devices).
-#[cfg(not(windows))]
-pub fn platform() -> Box<dyn DeviceProtector> {
+/// Desktop development builds: no OS protector (Keel currently ships for Android only).
+#[cfg(not(target_os = "android"))]
+pub fn platform<R: tauri::Runtime>(_app: &tauri::AppHandle<R>) -> Box<dyn DeviceProtector> {
     Box::new(keel_core::keystore::PlainProtector)
 }
 
-#[cfg(windows)]
-mod dpapi {
+#[cfg(target_os = "android")]
+pub mod android {
+    use base64::{engine::general_purpose::STANDARD, Engine};
     use keel_core::keystore::DeviceProtector;
-    use std::ptr;
-    use windows_sys::Win32::Foundation::LocalFree;
-    use windows_sys::Win32::Security::Cryptography::{
-        CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
-    };
+    use serde::{Deserialize, Serialize};
+    use tauri::plugin::{Builder, PluginHandle, TauriPlugin};
+    use tauri::{Manager, Runtime};
+    use zeroize::Zeroizing;
 
-    /// Windows Data Protection API, scoped to the current user.
-    pub struct Dpapi;
+    pub struct NativeHandle<R: Runtime>(pub PluginHandle<R>);
 
-    const ENTROPY: &[u8] = b"keel.dek.v1";
+    /// Registers the Kotlin `KeelPlugin` (gen/android/.../KeelPlugin.kt).
+    pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
+        Builder::new("keel-native")
+            .setup(|app, api| {
+                let handle = api.register_android_plugin("com.keel.finance", "KeelPlugin")?;
+                app.manage(NativeHandle(handle));
+                Ok(())
+            })
+            .build()
+    }
 
-    fn blob(d: &[u8]) -> CRYPT_INTEGER_BLOB {
-        CRYPT_INTEGER_BLOB {
-            cbData: d.len() as u32,
-            pbData: d.as_ptr() as *mut u8,
+    #[derive(Serialize)]
+    struct DataArgs<'a> {
+        data: &'a str,
+    }
+
+    #[derive(Deserialize)]
+    struct DataResp {
+        data: String,
+    }
+
+    /// Wraps the database key with a non-exportable AES-256-GCM key in the Android Keystore.
+    pub struct AndroidKeystore<R: Runtime>(pub PluginHandle<R>);
+
+    impl<R: Runtime> AndroidKeystore<R> {
+        fn call(&self, method: &str, input: &[u8]) -> Result<Vec<u8>, String> {
+            let encoded = Zeroizing::new(STANDARD.encode(input));
+            let resp: DataResp = self
+                .0
+                .run_mobile_plugin(method, DataArgs { data: &encoded })
+                .map_err(|_| format!("keystore {method} failed"))?;
+            let resp = Zeroizing::new(resp.data);
+            STANDARD
+                .decode(resp.as_bytes())
+                .map_err(|_| "invalid keystore response".into())
         }
     }
 
-    unsafe fn take(out: CRYPT_INTEGER_BLOB) -> Vec<u8> {
-        let v = std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
-        LocalFree(out.pbData as _);
-        v
-    }
-
-    impl DeviceProtector for Dpapi {
+    impl<R: Runtime> DeviceProtector for AndroidKeystore<R> {
         fn scheme(&self) -> &'static str {
-            "dpapi"
+            "android-keystore"
         }
-
         fn protect(&self, data: &[u8]) -> Result<Vec<u8>, String> {
-            let input = blob(data);
-            let entropy = blob(ENTROPY);
-            let mut out = CRYPT_INTEGER_BLOB {
-                cbData: 0,
-                pbData: ptr::null_mut(),
-            };
-            // SAFETY: all pointers reference live buffers for the duration of the call.
-            let ok = unsafe {
-                CryptProtectData(
-                    &input,
-                    ptr::null(),
-                    &entropy,
-                    ptr::null(),
-                    ptr::null(),
-                    CRYPTPROTECT_UI_FORBIDDEN,
-                    &mut out,
-                )
-            };
-            if ok == 0 {
-                return Err("CryptProtectData failed".into());
-            }
-            Ok(unsafe { take(out) })
+            self.call("wrap", data)
         }
-
         fn unprotect(&self, data: &[u8]) -> Result<Vec<u8>, String> {
-            let input = blob(data);
-            let entropy = blob(ENTROPY);
-            let mut out = CRYPT_INTEGER_BLOB {
-                cbData: 0,
-                pbData: ptr::null_mut(),
-            };
-            // SAFETY: as above.
-            let ok = unsafe {
-                CryptUnprotectData(
-                    &input,
-                    ptr::null_mut(),
-                    &entropy,
-                    ptr::null(),
-                    ptr::null(),
-                    CRYPTPROTECT_UI_FORBIDDEN,
-                    &mut out,
-                )
-            };
-            if ok == 0 {
-                return Err("CryptUnprotectData failed".into());
-            }
-            Ok(unsafe { take(out) })
+            self.call("unwrap", data)
         }
     }
 }

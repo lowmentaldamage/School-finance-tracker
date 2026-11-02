@@ -243,12 +243,14 @@
     "key_protection_value": {
       "dpapi": "Windows account",
       "plain": "App storage",
-      "development": "Development key"
+      "development": "Development key",
+      "android-keystore": "Android Keystore"
     },
     "key_protection_hint": {
       "dpapi": "The database key is protected by your Windows user account (DPAPI). Another Windows user or a copied file cannot open it.",
       "plain": "The database key is stored in the app's private storage. Hardware-backed key protection and an app PIN are planned.",
-      "development": "Development build using a fixed test key. Not for real data."
+      "development": "Development build using a fixed test key. Not for real data.",
+      "android-keystore": "The database key is wrapped by a non-exportable key in the Android Keystore (hardware-backed on most devices). The data cannot be read if the files are copied off the phone."
     },
     "version": "Keel {{version}}"
   }

@@ -139,7 +139,7 @@ export interface Settings {
   'onboarding.completed'?: boolean;
 }
 
-export type KeyProtection = 'dpapi' | 'plain' | 'development';
+export type KeyProtection = 'dpapi' | 'android-keystore' | 'plain' | 'development';
 
 export interface AppStatus {
   ready: boolean;

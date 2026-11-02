@@ -31,7 +31,7 @@
     "category": "Finance",
     "shortDescription": "Private personal finance tracker",
     "longDescription": "Keel is a local-first personal finance tracker. Your data stays encrypted on your device.",
-    "copyright": "© 2026 Keel",
+    "copyright": "\u00a9 2026 Keel",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -40,7 +40,13 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "nsis": { "installMode": "currentUser" }
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "android": {
+      "minSdkVersion": 26,
+      "versionCode": 1
     }
   }
 }

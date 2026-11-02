@@ -3,7 +3,7 @@
 Status: **Approved**
 Last updated: 2026-11-02
 
-Keel is a local-first, privacy-focused personal finance tracker for Windows and Android (iOS planned later). It runs fully offline, stores all data on the user's device in an encrypted database, and makes no network calls.
+Keel is a local-first, privacy-focused personal finance tracker for Android. Windows and iOS are deferred. It runs fully offline, stores all data on the user's device in an encrypted database, and makes no network calls.
 
 ---
 
@@ -24,7 +24,7 @@ Keel is a local-first, privacy-focused personal finance tracker for Windows and 
 
 | Platform | Minimum | Output | Notes |
 |---|---|---|---|
-| Windows | 10 / 11 (x64) | `.msi` / `.exe` installer | Shipped unsigned. The Windows SmartScreen warning on install is accepted. |
+| Windows | — | — | Deferred by the owner (2026-11-02). The shared codebase keeps it possible later. |
 | Android | 8.0 (API 26) | Signed `.apk` | Sideloaded at first, built to meet Google Play's requirements later |
 | iOS, macOS, Linux | — | — | Out of scope for v1. The shared codebase keeps them possible later (iOS needs a Mac and an Apple Developer account). |
 
@@ -153,5 +153,4 @@ iOS, cloud sync, multi-device, multi-user or household profiles, bank connection
 ## 9. Confirmed decisions
 
 1. The PIN is 8 digits. Passwords are also allowed.
-2. Mobile is Android only for now. iOS is deferred.
-3. The Windows build is unsigned, and the SmartScreen warning is accepted.
+2. Android only for now. Windows and iOS are deferred.
