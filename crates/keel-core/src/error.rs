@@ -24,6 +24,9 @@ pub enum CoreError {
     #[error("database schema version {found} is newer than this app supports ({supported})")]
     SchemaTooNew { found: i64, supported: i64 },
 
+    #[error("key storage error: {reason}")]
+    Keystore { reason: &'static str },
+
     #[error("database error")]
     Db(#[from] rusqlite::Error),
 }
@@ -43,6 +46,7 @@ impl CoreError {
             Self::Conflict { .. } => "conflict",
             Self::WrongKeyOrCorrupt => "wrong_key",
             Self::SchemaTooNew { .. } => "schema_too_new",
+            Self::Keystore { .. } => "keystore",
             Self::Db(_) => "database",
         }
     }

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="224" fill="#26282c"/>
+  <!-- Hull line and keel fin: a calm, stable mark -->
+  <path d="M232 420 H792" stroke="#e6e7e9" stroke-width="56" stroke-linecap="round"/>
+  <path d="M312 420 L512 760 L712 420" fill="none" stroke="#9a9ea6" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M512 420 V760" stroke="#e6e7e9" stroke-width="56" stroke-linecap="round"/>
+</svg>

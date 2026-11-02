@@ -2,7 +2,8 @@
 
 use std::path::Path;
 
-use rusqlite::{Connection, ErrorCode, OpenFlags};
+pub use rusqlite::Connection;
+use rusqlite::{ErrorCode, OpenFlags};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::error::{CoreError, CoreResult};

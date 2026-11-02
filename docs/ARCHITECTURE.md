@@ -12,12 +12,12 @@ Last updated: 2026-11-02
 | App shell | **Tauri 2** | One codebase for Windows and Android (iOS possible later). Small binaries (about 5–10 MB on desktop). A Rust backend keeps the database and crypto out of the webview. |
 | Backend | **Rust** | Memory-safe, owns all data access, crypto, backup and file I/O |
 | Database | **SQLite with SQLCipher** through `rusqlite` (`bundled-sqlcipher`) | Embedded, reliable, encrypted at rest, transactional |
-| Frontend | **React 18 + TypeScript (strict) + Vite** | Mature ecosystem and type safety across the UI |
+| Frontend | **React 19 + TypeScript (strict) + Vite** | Mature ecosystem and type safety across the UI |
 | Styling | **Tailwind CSS** driven by CSS-variable design tokens | Consistent spacing and colour, themeable light/dark |
-| UI primitives | **Radix UI** (unstyled, accessible) | Accessible dialogs, menus and selects without imposing a visual style |
+| UI primitives | **Radix UI** (unstyled, accessible) for dialogs and menus; native `<select>` and date inputs | Accessible, and the native controls use the platform pickers on Android |
 | Routing | React Router | Standard and well supported |
 | Data fetching | TanStack Query | Caching, loading and error states, invalidation after writes |
-| Forms | React Hook Form + Zod | Client validation. The Rust side re-validates every input. |
+| Forms | Plain React state + small validation functions | Fewer dependencies. The Rust side re-validates every input and returns the invalid field name. |
 | Charts | Recharts | SVG-based and React-native; fully restyled to the grey theme |
 | i18n | i18next | All text externalised from day one |
 | Tests | `cargo test`, Vitest, Testing Library, Playwright | Database, logic, components, end-to-end |
@@ -45,7 +45,7 @@ Last updated: 2026-11-02
 ```
 
 Rules:
-- **The UI never sends SQL.** It calls named commands (`transactions_list`, `transaction_create`, …) with typed arguments.
+- **The UI never sends SQL.** Every data operation is one Tauri command, `core_call(cmd, args)`, which forwards to `keel_core::api::dispatch`. The `match` in `dispatch` is the allow-list of operations (`accounts.create`, `transactions.list`, …). Arguments are deserialised into typed structs with unknown fields rejected.
 - Every command validates its input in Rust (ranges, lengths, enums, foreign-key existence) before touching the database.
 - All SQL uses bound parameters. Dynamic sorting and filtering pick from allow-listed column names, never interpolated user strings.
 - Multi-row writes (transfers, restores, migrations, recurring confirmations) run inside a database transaction.
@@ -78,7 +78,10 @@ Rules:
 │  ├─ lib/dates/
 │  ├─ i18n/
 │  └─ styles/tokens.css     design tokens (light/dark)
-├─ src-tauri/
+├─ crates/
+│  ├─ keel-core/            all domain logic, SQL, migrations, key storage (no UI dependency)
+│  └─ keel-devserver/       development-only HTTP bridge so the UI runs in a browser against the real core
+├─ src-tauri/               thin Tauri shell: window, IPC, platform key protection
 │  ├─ src/
 │  │  ├─ commands/
 │  │  ├─ services/
@@ -121,6 +124,11 @@ DEK  (random 256-bit Data Encryption Key) ── encrypts ──► keel.db (SQL
 - Changing the password re-wraps the DEK; the database is not re-encrypted.
 - Wrapping uses XChaCha20-Poly1305 (AEAD). Argon2id parameters are tuned per platform, targeting about 0.5 s (with a memory floor of at least 64 MiB on desktop and 32 MiB on mobile).
 - Key material is held in `zeroize`-on-drop buffers and cleared on lock.
+
+### 5.1a Current implementation status
+- **Windows:** the database key is wrapped with DPAPI (current user scope) and stored in `keystore.json`.
+- **Android (and Linux dev builds):** the key is currently stored **unwrapped** in `keystore.json` inside the app's private storage, with file mode 0600. Other apps cannot read it on a non-rooted device, but anyone with root or a full filesystem image can. Android Keystore wrapping and the PIN/password wrapping (above) are Phase 5 work. The Settings screen states the current protection level truthfully.
+- If the database exists but `keystore.json` is missing, the app refuses to create a new key, so existing data is never silently replaced.
 
 ### 5.2 Recovery key
 A 128-bit random key, shown once as 8 groups of 4 characters (Crockford Base32), which the user writes down. Keel never stores it in plaintext.

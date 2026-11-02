@@ -1,0 +1,165 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+
+/*
+ * Keel design tokens.
+ * Grey-first palette. Colour is reserved for meaning: positive (green), negative (red),
+ * warning (amber, budgets only) and one muted blue-grey accent for focus/selection.
+ */
+:root {
+  --bg: #f3f3f4;
+  --surface: #fbfbfb;
+  --surface-2: #eeeef0;
+  --surface-3: #e4e4e7;
+  --raised: #ffffff;
+  --border: #dddde1;
+  --border-strong: #c9c9ce;
+  --text: #17181a;
+  --text-muted: #5f6067;
+  --text-faint: #8d8e95;
+  --accent: #46576e;
+  --accent-soft: #e3e7ed;
+  --positive: #2c7a4b;
+  --positive-soft: #e3f0e8;
+  --negative: #b03d38;
+  --negative-soft: #f6e4e3;
+  --warning: #9a6a12;
+  --warning-soft: #f5ecd9;
+  --overlay: rgb(16 17 19 / 0.38);
+  --shadow-sm: 0 1px 2px rgb(16 17 19 / 0.05);
+  --shadow-md: 0 2px 8px rgb(16 17 19 / 0.06), 0 1px 2px rgb(16 17 19 / 0.04);
+  --shadow-lg: 0 12px 32px rgb(16 17 19 / 0.14), 0 2px 6px rgb(16 17 19 / 0.06);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #151617;
+    --surface: #1c1d1f;
+    --surface-2: #232427;
+    --surface-3: #2c2d31;
+    --raised: #36373c;
+    --border: #2d2e32;
+    --border-strong: #3b3c41;
+    --text: #ececee;
+    --text-muted: #a3a4ab;
+    --text-faint: #6f7077;
+    --accent: #9aaac0;
+    --accent-soft: #2a313b;
+    --positive: #63b885;
+    --positive-soft: #1d2c23;
+    --negative: #e27a73;
+    --negative-soft: #3a2221;
+    --warning: #d9a548;
+    --warning-soft: #33291a;
+    --overlay: rgb(0 0 0 / 0.55);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 2px 8px rgb(0 0 0 / 0.35);
+    --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #151617;
+  --surface: #1c1d1f;
+  --surface-2: #232427;
+  --surface-3: #2c2d31;
+  --raised: #36373c;
+  --border: #2d2e32;
+  --border-strong: #3b3c41;
+  --text: #ececee;
+  --text-muted: #a3a4ab;
+  --text-faint: #6f7077;
+  --accent: #9aaac0;
+  --accent-soft: #2a313b;
+  --positive: #63b885;
+  --positive-soft: #1d2c23;
+  --negative: #e27a73;
+  --negative-soft: #3a2221;
+  --warning: #d9a548;
+  --warning-soft: #33291a;
+  --overlay: rgb(0 0 0 / 0.55);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 2px 8px rgb(0 0 0 / 0.35);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-raised: var(--raised);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+  input[type='date']::-webkit-calendar-picker-indicator {
+    opacity: 0.6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) input[type='date']::-webkit-calendar-picker-indicator {
+      filter: invert(1);
+    }
+  }
+  :root[data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum', 'cv11';
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

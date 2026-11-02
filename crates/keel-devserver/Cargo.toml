@@ -1,0 +1,12 @@
+[package]
+name = "keel-devserver"
+description = "Development-only HTTP bridge so the UI can run in a normal browser against the real core."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+keel-core = { path = "../keel-core" }
+tiny_http = "0.12"
+serde_json = "1"
