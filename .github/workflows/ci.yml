@@ -72,6 +72,13 @@ jobs:
           echo "NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          # OpenSSL (vendored for SQLCipher) needs the NDK's LLVM archiver tools on PATH.
+          TC="$ANDROID_HOME/ndk/${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "$TC" >> "$GITHUB_PATH"
+          for t in aarch64_linux_android armv7_linux_androideabi i686_linux_android x86_64_linux_android; do
+            echo "RANLIB_${t}=$TC/llvm-ranlib" >> "$GITHUB_ENV"
+            echo "AR_${t}=$TC/llvm-ar" >> "$GITHUB_ENV"
+          done
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
