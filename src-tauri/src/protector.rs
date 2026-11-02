@@ -2,19 +2,29 @@
 
 use keel_core::keystore::DeviceProtector;
 
+/// (device protector, biometric protector if the device supports strong biometrics)
+pub type Protectors = (Box<dyn DeviceProtector>, Option<Box<dyn DeviceProtector>>);
+
 #[cfg(target_os = "android")]
-pub fn platform<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Box<dyn DeviceProtector> {
+pub fn platform<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Protectors {
     use tauri::Manager;
     match app.try_state::<android::NativeHandle<R>>() {
-        Some(h) => Box::new(android::AndroidKeystore(h.0.clone())),
-        None => Box::new(keel_core::keystore::PlainProtector),
+        Some(h) => {
+            let bio: Option<Box<dyn DeviceProtector>> = if android::biometric_available(&h.0) {
+                Some(Box::new(android::Biometric(h.0.clone())))
+            } else {
+                None
+            };
+            (Box::new(android::AndroidKeystore(h.0.clone())), bio)
+        }
+        None => (Box::new(keel_core::keystore::PlainProtector), None),
     }
 }
 
 /// Desktop development builds: no OS protector (Keel currently ships for Android only).
 #[cfg(not(target_os = "android"))]
-pub fn platform<R: tauri::Runtime>(_app: &tauri::AppHandle<R>) -> Box<dyn DeviceProtector> {
-    Box::new(keel_core::keystore::PlainProtector)
+pub fn platform<R: tauri::Runtime>(_app: &tauri::AppHandle<R>) -> Protectors {
+    (Box::new(keel_core::keystore::PlainProtector), None)
 }
 
 #[cfg(target_os = "android")]
@@ -44,37 +54,90 @@ pub mod android {
         data: &'a str,
     }
 
+    #[derive(Serialize)]
+    struct PromptArgs<'a> {
+        data: &'a str,
+        title: &'a str,
+        cancel: &'a str,
+    }
+
     #[derive(Deserialize)]
     struct DataResp {
         data: String,
     }
 
+    #[derive(Deserialize)]
+    struct BioStatus {
+        available: bool,
+    }
+
+    pub fn biometric_available<R: Runtime>(h: &PluginHandle<R>) -> bool {
+        h.run_mobile_plugin::<BioStatus>("bioStatus", ())
+            .map(|s| s.available)
+            .unwrap_or(false)
+    }
+
+    fn call<R: Runtime, A: Serialize>(
+        h: &PluginHandle<R>,
+        method: &str,
+        args: A,
+    ) -> Result<Vec<u8>, String> {
+        let resp: DataResp = h
+            .run_mobile_plugin(method, args)
+            .map_err(|_| format!("{method} failed"))?;
+        let resp = Zeroizing::new(resp.data);
+        STANDARD
+            .decode(resp.as_bytes())
+            .map_err(|_| "invalid native response".into())
+    }
+
     /// Wraps the database key with a non-exportable AES-256-GCM key in the Android Keystore.
     pub struct AndroidKeystore<R: Runtime>(pub PluginHandle<R>);
-
-    impl<R: Runtime> AndroidKeystore<R> {
-        fn call(&self, method: &str, input: &[u8]) -> Result<Vec<u8>, String> {
-            let encoded = Zeroizing::new(STANDARD.encode(input));
-            let resp: DataResp = self
-                .0
-                .run_mobile_plugin(method, DataArgs { data: &encoded })
-                .map_err(|_| format!("keystore {method} failed"))?;
-            let resp = Zeroizing::new(resp.data);
-            STANDARD
-                .decode(resp.as_bytes())
-                .map_err(|_| "invalid keystore response".into())
-        }
-    }
 
     impl<R: Runtime> DeviceProtector for AndroidKeystore<R> {
         fn scheme(&self) -> &'static str {
             "android-keystore"
         }
         fn protect(&self, data: &[u8]) -> Result<Vec<u8>, String> {
-            self.call("wrap", data)
+            let e = Zeroizing::new(STANDARD.encode(data));
+            call(&self.0, "wrap", DataArgs { data: &e })
         }
         fn unprotect(&self, data: &[u8]) -> Result<Vec<u8>, String> {
-            self.call("unwrap", data)
+            let e = STANDARD.encode(data);
+            call(&self.0, "unwrap", DataArgs { data: &e })
+        }
+    }
+
+    /// Keystore key usable only after a strong biometric check (the system prompt is shown).
+    pub struct Biometric<R: Runtime>(pub PluginHandle<R>);
+
+    impl<R: Runtime> DeviceProtector for Biometric<R> {
+        fn scheme(&self) -> &'static str {
+            "android-biometric"
+        }
+        fn protect(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+            let e = Zeroizing::new(STANDARD.encode(data));
+            call(
+                &self.0,
+                "bioWrap",
+                PromptArgs {
+                    data: &e,
+                    title: "Confirm to turn on biometric unlock",
+                    cancel: "Cancel",
+                },
+            )
+        }
+        fn unprotect(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+            let e = STANDARD.encode(data);
+            call(
+                &self.0,
+                "bioUnwrap",
+                PromptArgs {
+                    data: &e,
+                    title: "Unlock Keel",
+                    cancel: "Use PIN",
+                },
+            )
         }
     }
 }

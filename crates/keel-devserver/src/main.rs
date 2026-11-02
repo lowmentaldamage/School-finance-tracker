@@ -1,14 +1,17 @@
 //! DEVELOPMENT ONLY. Never shipped.
 //!
 //! Serves `POST /call {"cmd": "...", "args": {...}}` on 127.0.0.1 so the UI can be developed and
-//! end-to-end tested in a regular browser against the real Rust core and an encrypted database.
-//! The database lives in `target/devdata/` and is protected by a fixed development key.
+//! end-to-end tested in a regular browser against the real Rust core (the same `Session` the
+//! Android app uses). Data lives in `target/devdata/` (or `KEEL_DEV_DATA`), with the key file
+//! stored unprotected, so never use it for real data.
 
 use std::io::Read;
 use std::path::PathBuf;
 
-use keel_core::db::{self, DbKey};
+use keel_core::crypto::TEST_KDF;
 use keel_core::error::ErrorPayload;
+use keel_core::keystore::PlainProtector;
+use keel_core::session::Session;
 use serde_json::{json, Value};
 use tiny_http::{Header, Method, Response, Server};
 
@@ -20,18 +23,21 @@ fn main() {
     let dir = std::env::var("KEEL_DEV_DATA")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("target/devdata"));
-    std::fs::create_dir_all(&dir).expect("create dev data dir");
-    let path = dir.join("keel-dev.db");
     if std::env::args().any(|a| a == "--reset") {
-        for ext in ["", "-wal", "-shm"] {
-            let _ = std::fs::remove_file(format!("{}{ext}", path.display()));
-        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
-    let conn = db::open(&path, &DbKey::from_bytes([0x42; 32])).expect("open dev database");
+    std::fs::create_dir_all(&dir).expect("create dev data dir");
+    // Development server: fast KDF and a "biometric" that always succeeds, to exercise the UI.
+    let mut session = Session::new(
+        dir.clone(),
+        Box::new(PlainProtector),
+        Some(Box::new(PlainProtector)),
+        TEST_KDF,
+    );
     let server = Server::http(("127.0.0.1", port)).expect("bind dev server");
     eprintln!(
         "keel-devserver on http://127.0.0.1:{port} using {}",
-        path.display()
+        dir.display()
     );
 
     let cors = [
@@ -46,8 +52,8 @@ fn main() {
             Response::from_string("").with_status_code(204)
         } else if req.method() == &Method::Post && req.url() == "/call" {
             let mut body = String::new();
-            let _ = req.as_reader().take(1_000_000).read_to_string(&mut body);
-            let (status, out) = handle(&conn, &body);
+            let _ = req.as_reader().take(300_000_000).read_to_string(&mut body);
+            let (status, out) = handle(&mut session, &body);
             Response::from_string(out.to_string()).with_status_code(status)
         } else {
             Response::from_string("{}").with_status_code(404)
@@ -59,7 +65,7 @@ fn main() {
     }
 }
 
-fn handle(conn: &db::Connection, body: &str) -> (u16, Value) {
+fn handle(session: &mut Session, body: &str) -> (u16, Value) {
     let Ok(v) = serde_json::from_str::<Value>(body) else {
         return (
             400,
@@ -67,14 +73,8 @@ fn handle(conn: &db::Connection, body: &str) -> (u16, Value) {
         );
     };
     let cmd = v.get("cmd").and_then(Value::as_str).unwrap_or_default();
-    if cmd == "app.status" {
-        return (
-            200,
-            json!({"ready": true, "error": null, "key_protection": "development"}),
-        );
-    }
     let args = v.get("args").cloned().unwrap_or(json!({}));
-    match keel_core::api::dispatch(conn, cmd, args) {
+    match session.call(cmd, args) {
         Ok(v) => (200, v),
         Err(e) => (
             422,

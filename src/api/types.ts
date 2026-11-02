@@ -137,20 +137,47 @@ export interface Settings {
   theme?: Theme;
   'dashboard.hidden_sections'?: string[];
   'onboarding.completed'?: boolean;
+  'security.auto_lock_minutes'?: number;
+  'security.background_lock_secs'?: number;
+  'security.hide_in_switcher'?: boolean;
 }
 
-export type KeyProtection = 'dpapi' | 'android-keystore' | 'plain' | 'development';
+export type KeyProtection = 'android-keystore' | 'plain';
+export type LockKind = 'pin' | 'password';
+
+export interface LockInfo {
+  kind: LockKind;
+  biometric: boolean;
+  failed_attempts: number;
+  retry_after_secs: number;
+}
 
 export interface AppStatus {
   ready: boolean;
+  locked: boolean;
+  lock: LockInfo | null;
+  biometric_available: boolean;
+  key_protection: KeyProtection;
   error: ApiErrorPayload | null;
-  key_protection?: KeyProtection;
+}
+
+export interface FileData {
+  file_name: string;
+  data_b64: string;
+}
+
+export interface BackupSummary {
+  schema_version: number;
+  created_at: string;
+  transactions: number;
+  accounts: number;
 }
 
 export interface ApiErrorPayload {
   code: string;
   field: string | null;
   message: string;
+  retry_after_secs?: number;
 }
 
 // Reports --------------------------------------------------------------------

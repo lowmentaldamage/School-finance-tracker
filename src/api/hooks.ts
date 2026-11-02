@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 
-import { call } from './client';
+import { appStatus, call } from './client';
 import type {
   Balances,
   BudgetHistoryPoint,
@@ -60,8 +60,8 @@ function useInvalidateData() {
 
 // Settings ------------------------------------------------------------------
 
-export function useSettings() {
-  return useQuery({ queryKey: keys.settings, queryFn: () => call<Settings>('settings.all'), staleTime: Infinity });
+export function useSettings(enabled = true) {
+  return useQuery({ queryKey: keys.settings, queryFn: () => call<Settings>('settings.all'), staleTime: Infinity, enabled });
 }
 
 export function useSetSetting() {
@@ -340,4 +340,36 @@ export function useContribute() {
 export function useDeleteContribution() {
   const invalidate = useInvalidateData();
   return useMutation({ mutationFn: (id: string) => call<Goal>('goals.delete_contribution', { id }), onSuccess: invalidate });
+}
+
+// Session, security and data ---------------------------------------------------
+
+export function useAppStatus() {
+  return useQuery({ queryKey: ['app-status'], queryFn: appStatus, staleTime: Infinity });
+}
+
+/** After lock/unlock the cached data must not outlive the session. */
+export function useResetAfterSessionChange() {
+  const qc = useQueryClient();
+  return async () => {
+    qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'app-status' });
+    await qc.invalidateQueries({ queryKey: ['app-status'] });
+  };
+}
+
+export function useSessionCall<A extends Record<string, unknown>, R = unknown>(cmd: string, opts: { resetSession?: boolean } = {}) {
+  const reset = useResetAfterSessionChange();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: A) => call<R>(cmd, args),
+    onSuccess: async () => {
+      if (opts.resetSession) await reset();
+      else await qc.invalidateQueries({ queryKey: ['app-status'] });
+    },
+  });
+}
+
+export function useInvalidateAll() {
+  const qc = useQueryClient();
+  return () => qc.invalidateQueries();
 }

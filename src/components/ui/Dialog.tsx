@@ -2,6 +2,7 @@ import * as RD from '@radix-ui/react-dialog';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useBackToClose } from '../../lib/backButton';
 import { cn } from '../../lib/cn';
 import { Button, IconButton } from './Button';
 import { Icon } from './Icon';
@@ -19,6 +20,7 @@ interface DialogProps {
 /** Centered dialog on desktop, bottom sheet on small screens. */
 export function Dialog({ open, onOpenChange, title, description, children, footer, size = 'md' }: DialogProps) {
   const { t } = useTranslation();
+  useBackToClose(open, () => onOpenChange(false));
   const widths = { sm: 'md:max-w-[400px]', md: 'md:max-w-[520px]', lg: 'md:max-w-[680px]' };
   return (
     <RD.Root open={open} onOpenChange={onOpenChange}>

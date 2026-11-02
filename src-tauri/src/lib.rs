@@ -2,71 +2,40 @@ mod protector;
 
 use std::sync::Mutex;
 
+use keel_core::crypto::DEFAULT_KDF;
 use keel_core::error::ErrorPayload;
-use keel_core::{db, keystore, CoreError};
-use rusqlite::Connection;
-use serde::Serialize;
-use serde_json::Value;
+use keel_core::session::Session;
+use keel_core::CoreError;
+use serde::Deserialize;
+use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Runtime, State};
 
-/// The database is opened on the first command, after the platform (and on Android the
+/// The session is created on the first command, after the platform (and on Android the
 /// Keystore plugin) is fully initialised.
 #[derive(Default)]
 struct AppState {
-    inner: Mutex<Inner>,
+    session: Mutex<Option<Session>>,
 }
 
-#[derive(Default)]
-struct Inner {
-    db: Option<Connection>,
-    error: Option<CoreError>,
-    key_protection: &'static str,
-}
-
-#[derive(Serialize)]
-struct Status {
-    ready: bool,
-    error: Option<ErrorPayload>,
-    key_protection: &'static str,
-}
-
-fn ensure_open<R: Runtime>(app: &AppHandle<R>, inner: &mut Inner) {
-    if inner.db.is_some() || inner.error.is_some() {
-        return;
+fn with_session<R: Runtime, T>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    f: impl FnOnce(&mut Session) -> Result<T, ErrorPayload>,
+) -> Result<T, ErrorPayload> {
+    let mut guard = state.session.lock().unwrap_or_else(|p| p.into_inner());
+    if guard.is_none() {
+        let dir = app.path().app_data_dir().map_err(|_| {
+            ErrorPayload::from(&CoreError::Keystore {
+                reason: "cannot locate the app data folder",
+            })
+        })?;
+        let (device, bio) = protector::platform(app);
+        *guard = Some(Session::new(dir, device, bio, DEFAULT_KDF));
     }
-    let protector = protector::platform(app);
-    inner.key_protection = protector.scheme();
-    let result = app
-        .path()
-        .app_data_dir()
-        .map_err(|_| CoreError::Keystore {
-            reason: "cannot locate the app data folder",
-        })
-        .and_then(|dir| {
-            let key = keystore::load_or_create(&dir, protector.as_ref())?;
-            db::open(&keystore::db_path(&dir), &key)
-        });
-    match result {
-        Ok(c) => inner.db = Some(c),
-        Err(e) => inner.error = Some(e),
-    }
+    f(guard.as_mut().expect("session initialised"))
 }
 
-#[tauri::command]
-async fn app_status<R: Runtime>(
-    app: AppHandle<R>,
-    state: State<'_, AppState>,
-) -> Result<Status, ()> {
-    let mut inner = state.inner.lock().unwrap_or_else(|p| p.into_inner());
-    ensure_open(&app, &mut inner);
-    Ok(Status {
-        ready: inner.db.is_some(),
-        error: inner.error.as_ref().map(ErrorPayload::from),
-        key_protection: inner.key_protection,
-    })
-}
-
-/// Every data operation goes through the core dispatcher, which allow-lists commands
+/// Every data operation goes through the session, whose dispatcher allow-lists commands
 /// and validates arguments. No SQL crosses this boundary.
 #[tauri::command]
 async fn core_call<R: Runtime>(
@@ -75,17 +44,91 @@ async fn core_call<R: Runtime>(
     cmd: String,
     args: Value,
 ) -> Result<Value, ErrorPayload> {
-    let mut inner = state.inner.lock().unwrap_or_else(|p| p.into_inner());
-    ensure_open(&app, &mut inner);
-    if let Some(e) = &inner.error {
-        return Err(e.into());
-    }
-    let conn = inner.db.as_ref().ok_or(ErrorPayload {
+    with_session(&app, &state, |s| {
+        s.call(&cmd, args).map_err(|e| ErrorPayload::from(&e))
+    })
+}
+
+#[derive(Deserialize)]
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+struct SaveArgs {
+    name: String,
+    mime: String,
+    data_b64: String,
+}
+
+fn native_unavailable() -> ErrorPayload {
+    ErrorPayload {
         code: "unavailable",
         field: None,
-        message: "database not open".into(),
-    })?;
-    keel_core::api::dispatch(conn, &cmd, args).map_err(|e| ErrorPayload::from(&e))
+        message: "not available on this platform".into(),
+        retry_after_secs: None,
+    }
+}
+
+/// Save bytes through the system file picker. Returns `{ saved: bool }`.
+#[tauri::command]
+async fn save_file<R: Runtime>(app: AppHandle<R>, args: SaveArgs) -> Result<Value, ErrorPayload> {
+    if args.name.len() > 120 || args.mime.len() > 80 {
+        return Err(ErrorPayload::from(&CoreError::validation(
+            "name", "too long",
+        )));
+    }
+    #[cfg(target_os = "android")]
+    {
+        let h = app.state::<protector::android::NativeHandle<R>>();
+        let v: Value =
+            h.0.run_mobile_plugin(
+                "saveFile",
+                json!({ "name": args.name, "mime": args.mime, "data": args.data_b64 }),
+            )
+            .map_err(|_| {
+                ErrorPayload::from(&CoreError::validation("file", "could not be saved"))
+            })?;
+        Ok(v)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, args);
+        Err(native_unavailable())
+    }
+}
+
+/// Pick a file through the system file picker. Returns `{ data: base64 }` ("" if cancelled).
+#[tauri::command]
+async fn open_file<R: Runtime>(app: AppHandle<R>) -> Result<Value, ErrorPayload> {
+    #[cfg(target_os = "android")]
+    {
+        let h = app.state::<protector::android::NativeHandle<R>>();
+        let v: Value = h
+            .0
+            .run_mobile_plugin("openFile", json!({}))
+            .map_err(|_| ErrorPayload::from(&CoreError::validation("file", "could not be read")))?;
+        Ok(v)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Err(native_unavailable())
+    }
+}
+
+/// Hide content in the app switcher and block screenshots (Android FLAG_SECURE).
+#[tauri::command]
+async fn set_secure<R: Runtime>(app: AppHandle<R>, enabled: bool) -> Result<Value, ErrorPayload> {
+    #[cfg(target_os = "android")]
+    {
+        let h = app.state::<protector::android::NativeHandle<R>>();
+        let _: Value =
+            h.0.run_mobile_plugin("setSecure", json!({ "enabled": enabled }))
+                .unwrap_or(Value::Null);
+        Ok(json!(null))
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, enabled);
+        Ok(json!(null))
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -94,7 +137,9 @@ pub fn run() {
     #[cfg(target_os = "android")]
     let builder = builder.plugin(protector::android::plugin());
     builder
-        .invoke_handler(tauri::generate_handler![app_status, core_call])
+        .invoke_handler(tauri::generate_handler![
+            core_call, save_file, open_file, set_secure
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Keel");
 }

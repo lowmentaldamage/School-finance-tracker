@@ -8,6 +8,7 @@ import { todayISO } from '../../lib/dates';
 import { fieldError, humanize } from '../../lib/errors';
 import { currencyExponent, parseSignedAmount } from '../../lib/money';
 import { ACCOUNT_KINDS } from '../accounts/AccountForm';
+import { LockSetup } from '../lock/LockSetup';
 
 /** First-run setup: currency, then the first account. No sample data is created. */
 export function Onboarding() {
@@ -16,7 +17,7 @@ export function Onboarding() {
   const setSetting = useSetSetting();
   const saveAccount = useSaveAccount();
 
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [displayName, setDisplayName] = useState('');
   const [currency, setCurrency] = useState('EUR');
   const [accName, setAccName] = useState('');
@@ -36,6 +37,16 @@ export function Onboarding() {
     } catch (err) {
       setError(humanize(fieldError(err).message));
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function complete() {
+    setBusy(true);
+    try {
+      await setSetting.mutateAsync({ key: 'onboarding.completed', value: true });
+    } catch (err) {
+      setError(humanize(fieldError(err).message));
       setBusy(false);
     }
   }
@@ -68,13 +79,8 @@ export function Onboarding() {
         return;
       }
     }
-    setBusy(true);
-    try {
-      await setSetting.mutateAsync({ key: 'onboarding.completed', value: true });
-    } catch (err) {
-      setError(humanize(fieldError(err).message));
-      setBusy(false);
-    }
+    setBusy(false);
+    setStep(3);
   }
 
   return (
@@ -83,7 +89,7 @@ export function Onboarding() {
         <div className="mb-8 flex items-center gap-2.5">
           <img src="/icon.svg" alt="" className="size-8 rounded-[8px]" />
           <span className="text-[17px] font-semibold tracking-[-0.01em]">Keel</span>
-          <span className="tabular ml-auto text-[12.5px] text-faint">{t('onboarding.step', { step, total: 2 })}</span>
+          <span className="tabular ml-auto text-[12.5px] text-faint">{t('onboarding.step', { step, total: 3 })}</span>
         </div>
 
         {step === 1 ? (
@@ -115,6 +121,20 @@ export function Onboarding() {
               {t('common.continue')}
             </Button>
           </form>
+        ) : step === 3 ? (
+          <div className="rounded-lg border border-border bg-surface p-6 shadow-sm">
+            <h1 className="text-[20px] font-semibold tracking-[-0.01em]">{t('onboarding.lock_title')}</h1>
+            <p className="mt-1.5 mb-6 text-sm text-muted">{t('onboarding.lock_body')}</p>
+            <LockSetup doneLabel={t('onboarding.finish')} onDone={() => void complete()} />
+            {error && (
+              <p role="alert" className="mt-4 text-sm text-negative">
+                {error}
+              </p>
+            )}
+            <Button variant="ghost" className="mt-3 w-full" disabled={busy} onClick={() => void complete()}>
+              {t('onboarding.lock_skip')}
+            </Button>
+          </div>
         ) : (
           <form
             onSubmit={(e) => {
@@ -152,7 +172,7 @@ export function Onboarding() {
             )}
             <div className="mt-6 flex flex-col gap-2">
               <Button type="submit" variant="primary" className="w-full" loading={busy}>
-                {t('onboarding.finish')}
+                {t('common.continue')}
               </Button>
               <Button variant="ghost" className="w-full" disabled={busy} onClick={() => void finish(false)}>
                 {t('onboarding.skip')}

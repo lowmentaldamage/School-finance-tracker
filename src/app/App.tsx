@@ -1,9 +1,8 @@
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createHashRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-import { appStatus } from '../api/client';
-import { useSettings } from '../api/hooks';
+import { useAppStatus, useSettings } from '../api/hooks';
 import { Button, ErrorState, Spinner, ToastProvider } from '../components/ui';
 import { AccountsPage } from '../features/accounts/AccountsPage';
 import { AnalyticsPage } from '../features/analytics/AnalyticsPage';
@@ -12,6 +11,8 @@ import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { GoalsPage } from '../features/goals/GoalsPage';
 import { RecurringPage } from '../features/recurring/RecurringPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
+import { AutoLock } from '../features/lock/AutoLock';
+import { LockScreen } from '../features/lock/LockScreen';
 import { Onboarding } from '../features/onboarding/Onboarding';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { QuickAddProvider } from '../features/transactions/QuickAdd';
@@ -53,12 +54,18 @@ function FullScreen({ children }: { children: React.ReactNode }) {
   return <div className="flex h-full items-center justify-center bg-bg">{children}</div>;
 }
 
+/** Settings can only be read while the database is open. */
+function useSettingsWhen(ready: boolean) {
+  const s = useSettings(ready);
+  return s;
+}
+
 function Gate() {
   const { t } = useTranslation();
   useThemeSync();
-  const status = useQuery({ queryKey: ['app-status'], queryFn: appStatus, staleTime: Infinity });
+  const status = useAppStatus();
   const ready = status.data?.ready === true;
-  const settings = useSettings();
+  const settings = useSettingsWhen(ready);
   const settingsReady = ready && settings.isSuccess;
 
   if (status.isLoading || (ready && settings.isLoading)) {
@@ -67,6 +74,9 @@ function Gate() {
         <Spinner className="text-faint" />
       </FullScreen>
     );
+  }
+  if (status.data?.locked) {
+    return <LockScreen status={status.data} />;
   }
   if (!ready || settings.isError) {
     const message = status.data?.error?.message ?? (settings.error as Error | null)?.message;
@@ -83,7 +93,12 @@ function Gate() {
   if (settingsReady && settings.data['onboarding.completed'] !== true) {
     return <Onboarding />;
   }
-  return <RouterProvider router={router} />;
+  return (
+    <>
+      <AutoLock status={status.data!} />
+      <RouterProvider router={router} />
+    </>
+  );
 }
 
 export function App() {

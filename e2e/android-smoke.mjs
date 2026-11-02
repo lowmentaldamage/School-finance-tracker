@@ -40,8 +40,10 @@ async function main() {
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('Name').fill('Main checking');
   await page.getByLabel('Current balance').fill('1000');
-  await page.getByRole('button', { name: 'Finish setup' }).click();
-  await page.getByRole('heading', { name: 'Transactions' }).waitFor();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Not now' }).click();
+  await page.getByRole('heading', { name: 'Overview' }).waitFor();
+  sh(`adb exec-out screencap -p > ${OUT}/02-overview-empty.png`);
 
   await page.getByRole('button', { name: 'Add transaction' }).last().click();
   const dialog = page.getByRole('dialog');
@@ -51,16 +53,43 @@ async function main() {
   sh(`adb exec-out screencap -p > ${OUT}/02-add.png`);
   await dialog.getByRole('button', { name: 'Add', exact: true }).click();
   await dialog.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Transactions' }).first().waitFor();
+  await page.getByRole('link', { name: 'Transactions' }).click();
   await page.getByText('Bakery').waitFor();
   sh(`adb exec-out screencap -p > ${OUT}/03-transactions.png`);
 
-  await page.getByRole('link', { name: 'Accounts' }).click();
+  await page.getByRole('link', { name: 'Overview' }).click();
   await page.getByText('€987.66').first().waitFor();
-  sh(`adb exec-out screencap -p > ${OUT}/04-accounts.png`);
+  sh(`adb exec-out screencap -p > ${OUT}/04-overview.png`);
 
+  await page.getByRole('button', { name: 'More' }).click();
   await page.getByRole('link', { name: 'Settings' }).click();
-  await page.getByText('Android Keystore').waitFor();
+  await page.getByText('Android Keystore').first().waitFor();
   sh(`adb exec-out screencap -p > ${OUT}/05-settings.png`);
+
+  // App lock with PIN; lock by sending the app to the background, then unlock.
+  await page.getByRole('button', { name: 'Set up app lock' }).click();
+  const dlg = page.getByRole('dialog');
+  await dlg.getByLabel('New PIN').fill('24681357');
+  await dlg.getByLabel('Confirm PIN').fill('24681357');
+  await dlg.getByRole('button', { name: 'Turn on app lock' }).click();
+  await dlg.getByTestId('recovery-key').waitFor();
+  await dlg.getByLabel('I have saved my recovery key').check();
+  await dlg.getByRole('button', { name: 'Done' }).click();
+  sh('adb shell input keyevent KEYCODE_HOME');
+  await sleep(2000);
+  sh(`adb shell am start -n ${PKG}/.MainActivity`);
+  await page.getByText('Keel is locked').waitFor({ timeout: 20_000 });
+  sh(`adb exec-out screencap -p > ${OUT}/06-locked.png`);
+  for (const d of '24681357') await page.getByRole('button', { name: d, exact: true }).click();
+  await page.getByText('Android Keystore').first().waitFor();
+
+  // Back button closes a dialog instead of leaving the page.
+  await page.getByRole('button', { name: 'Create backup' }).click();
+  await dlg.waitFor();
+  sh('adb shell input keyevent KEYCODE_BACK');
+  await dlg.waitFor({ state: 'detached', timeout: 10_000 });
+  await page.getByRole('heading', { name: 'Settings' }).waitFor();
 
   // Data survives an app restart (encrypted DB re-opened with the Keystore-wrapped key).
   await browser.close();
@@ -71,7 +100,9 @@ async function main() {
   sh(`adb forward tcp:9222 localabstract:webview_devtools_remote_${pid}`);
   const b2 = await chromium.connectOverCDP('http://127.0.0.1:9222');
   const p2 = b2.contexts()[0].pages()[0];
-  await p2.getByText('Bakery').waitFor({ timeout: 30_000 });
+  await p2.getByText('Keel is locked').waitFor({ timeout: 30_000 });
+  for (const d of '24681357') await p2.getByRole('button', { name: d, exact: true }).click();
+  await p2.getByText('Bakery').first().waitFor({ timeout: 30_000 });
   await b2.close();
 
   if (errors.length) throw new Error(`page errors: ${JSON.stringify(errors)}`);

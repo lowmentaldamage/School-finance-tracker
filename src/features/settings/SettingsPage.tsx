@@ -1,14 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-import { appStatus } from '../../api/client';
 import { useCurrencies, useSetSetting, useSettings } from '../../api/hooks';
 import type { Theme } from '../../api/types';
 import { Button, Input, Page, PageHeader, Panel, Segmented, Select, useToast } from '../../components/ui';
 import { humanize } from '../../lib/errors';
 import { defaultLocale, formatMoney } from '../../lib/money';
+import { DataPanel } from './DataPanel';
 import { RatesPanel } from './RatesPanel';
+import { SecurityPanel } from './SecurityPanel';
 
 const LOCALES = ['system', 'en-IE', 'en-GB', 'en-US', 'de-DE', 'fr-FR', 'nl-NL', 'es-ES', 'it-IT', 'pt-PT', 'pl-PL', 'sv-SE', 'fi-FI', 'de-CH'];
 
@@ -30,7 +30,6 @@ export function SettingsPage() {
   const settings = useSettings();
   const currencies = useCurrencies();
   const set = useSetSetting();
-  const status = useQuery({ queryKey: ['app-status'], queryFn: appStatus, staleTime: Infinity });
 
   const [name, setName] = useState('');
   useEffect(() => setName(settings.data?.['profile.display_name'] ?? ''), [settings.data]);
@@ -47,7 +46,6 @@ export function SettingsPage() {
   const s = settings.data ?? {};
   const locale = s['locale.number'] ?? 'system';
   const effectiveLocale = locale === 'system' ? defaultLocale() : locale;
-  const protection = status.data?.key_protection;
 
   return (
     <Page>
@@ -118,16 +116,9 @@ export function SettingsPage() {
 
         <RatesPanel />
 
-        <Panel title={t('settings.security')}>
-          <div className="divide-y divide-border">
-            <Row label={t('settings.encryption')} hint={t('settings.encryption_hint')}>
-              <span className="text-sm text-text">{t('settings.encryption_on')}</span>
-            </Row>
-            <Row label={t('settings.key_protection')} hint={protection ? t(`settings.key_protection_hint.${protection}`) : undefined}>
-              <span className="text-sm text-text">{protection ? t(`settings.key_protection_value.${protection}`) : '—'}</span>
-            </Row>
-          </div>
-        </Panel>
+        <SecurityPanel />
+
+        <DataPanel />
 
         <p className="text-[12.5px] text-faint">{t('settings.version', { version: __APP_VERSION__ })}</p>
       </div>

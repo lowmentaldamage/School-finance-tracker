@@ -27,6 +27,15 @@ pub enum CoreError {
     #[error("key storage error: {reason}")]
     Keystore { reason: &'static str },
 
+    #[error("Keel is locked")]
+    Locked,
+
+    #[error("the PIN, password or recovery key is not correct")]
+    WrongSecret { retry_after_secs: u64 },
+
+    #[error("too many attempts; try again in {retry_after_secs} seconds")]
+    Throttled { retry_after_secs: u64 },
+
     #[error("database error")]
     Db(#[from] rusqlite::Error),
 }
@@ -47,6 +56,9 @@ impl CoreError {
             Self::WrongKeyOrCorrupt => "wrong_key",
             Self::SchemaTooNew { .. } => "schema_too_new",
             Self::Keystore { .. } => "keystore",
+            Self::Locked => "locked",
+            Self::WrongSecret { .. } => "wrong_secret",
+            Self::Throttled { .. } => "throttled",
             Self::Db(_) => "database",
         }
     }
@@ -58,6 +70,8 @@ pub struct ErrorPayload {
     pub code: &'static str,
     pub field: Option<&'static str>,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_after_secs: Option<u64>,
 }
 
 impl From<&CoreError> for ErrorPayload {
@@ -66,10 +80,16 @@ impl From<&CoreError> for ErrorPayload {
             CoreError::Validation { field, .. } => Some(*field),
             _ => None,
         };
+        let retry_after_secs = match e {
+            CoreError::WrongSecret { retry_after_secs }
+            | CoreError::Throttled { retry_after_secs } => Some(*retry_after_secs),
+            _ => None,
+        };
         Self {
             code: e.code(),
             field,
             message: e.to_string(),
+            retry_after_secs,
         }
     }
 }

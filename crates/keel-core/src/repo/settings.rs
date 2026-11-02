@@ -15,6 +15,9 @@ pub const ALLOWED_KEYS: &[&str] = &[
     "dashboard.hidden_sections",
     "onboarding.completed",
     "defaults.seeded",
+    "security.auto_lock_minutes",
+    "security.background_lock_secs",
+    "security.hide_in_switcher",
 ];
 
 fn check_key(key: &str) -> CoreResult<()> {
@@ -74,7 +77,9 @@ fn validate_value(key: &str, v: &Value) -> CoreResult<()> {
         "dashboard.hidden_sections" => v.as_array().is_some_and(|a| {
             a.len() <= 20 && a.iter().all(|x| x.as_str().is_some_and(|s| s.len() <= 40))
         }),
-        "onboarding.completed" | "defaults.seeded" => v.is_boolean(),
+        "onboarding.completed" | "defaults.seeded" | "security.hide_in_switcher" => v.is_boolean(),
+        "security.auto_lock_minutes" => matches!(v.as_u64(), Some(1 | 2 | 5 | 10 | 15 | 30 | 60)),
+        "security.background_lock_secs" => matches!(v.as_u64(), Some(0 | 30 | 60 | 300)),
         _ => false,
     };
     if ok {

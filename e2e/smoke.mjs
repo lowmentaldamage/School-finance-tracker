@@ -13,6 +13,7 @@ const UI = 'http://localhost:5173/';
 const BRIDGE = 'http://127.0.0.1:5174/call';
 const dataDir = mkdtempSync(join(tmpdir(), 'keel-e2e-'));
 const procs = [];
+let currentPage = null;
 
 function start(cmd, args, env = {}) {
   const p = spawn(cmd, args, { env: { ...process.env, ...env }, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -41,21 +42,27 @@ function assert(cond, msg) {
 async function main() {
   start('cargo', ['run', '-q', '-p', 'keel-devserver'], { KEEL_DEV_DATA: dataDir });
   start('npx', ['vite', '--port', '5173', '--strictPort']);
-  await waitFor(async () => (await fetch(BRIDGE, { method: 'POST', body: '{"cmd":"app.status"}' })).ok, 'dev backend', 600_000);
+  await waitFor(async () => (await fetch(BRIDGE, { method: 'POST', body: '{"cmd":"session.status"}' })).ok, 'dev backend', 600_000);
   await waitFor(async () => (await fetch(UI)).ok, 'vite');
 
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+  currentPage = page;
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  // 422 responses are expected core errors (wrong PIN, wrong password); they are asserted in the UI instead.
+  page.on('console', (m) => m.type() === 'error' && !m.text().includes('status of 422') && errors.push(m.text()));
 
   await page.goto(UI);
   await page.getByText('Welcome to Keel').waitFor();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('Name').fill('Main checking');
   await page.getByLabel('Current balance').fill('1.000,00');
-  await page.getByRole('button', { name: 'Finish setup' }).click();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByText('Lock Keel').waitFor();
+  await page.getByRole('button', { name: 'Not now' }).click();
+  await page.getByRole('heading', { name: 'Overview' }).waitFor();
+  await page.getByRole('link', { name: 'Transactions' }).click();
   await page.getByRole('heading', { name: 'Transactions' }).waitFor();
 
   const dialog = page.getByRole('dialog');
@@ -121,10 +128,60 @@ async function main() {
   await page.getByText('2 transactions use this category').waitFor();
   await page.keyboard.press('Escape');
 
+  // App lock: set a PIN, get a recovery key, lock, fail once, unlock.
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Set up app lock' }).click();
+  await dialog.getByLabel('New PIN').fill('24681357');
+  await dialog.getByLabel('Confirm PIN').fill('24681357');
+  await dialog.getByRole('button', { name: 'Turn on app lock' }).click();
+  const recovery = (await dialog.getByTestId('recovery-key').textContent())?.trim();
+  assert(recovery && recovery.length === 39, 'recovery key shown');
+  await dialog.getByLabel('I have saved my recovery key').check();
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await fetch(BRIDGE, { method: 'POST', body: '{"cmd":"session.lock"}' });
+  await page.reload();
+  await page.getByText('Keel is locked').waitFor();
+  for (const d of '11111111') await page.getByRole('button', { name: d, exact: true }).click();
+  await page.getByText('Wrong PIN. Try again.').waitFor();
+  for (const d of '24681357') await page.getByRole('button', { name: d, exact: true }).click();
+  await page.getByRole('heading', { name: 'Settings' }).waitFor();
+
+  // Recovery key unlock.
+  await fetch(BRIDGE, { method: 'POST', body: '{"cmd":"session.lock"}' });
+  await page.reload();
+  await page.getByRole('button', { name: /Use the recovery key/ }).click();
+  await page.getByLabel('Recovery key').fill(recovery.toLowerCase());
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await page.getByRole('heading', { name: 'Settings' }).waitFor();
+
+  // Encrypted backup, then restore it.
+  await page.getByRole('button', { name: 'Create backup' }).click();
+  await dialog.getByLabel('Backup password', { exact: true }).fill('a long backup password');
+  await dialog.getByLabel('Confirm backup password').fill('a long backup password');
+  const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: 'Save backup' }).click()]);
+  const backupPath = join(dataDir, 'test.keelbak');
+  await download.saveAs(backupPath);
+  assert(download.suggestedFilename().endsWith('.keelbak'), 'backup file name');
+  await page.getByRole('button', { name: 'Restore from backup' }).click();
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), dialog.getByRole('button', { name: 'Choose file' }).click()]);
+  await chooser.setFiles(backupPath);
+  await dialog.getByLabel('Backup password').fill('wrong password here');
+  await dialog.getByRole('button', { name: 'Open backup' }).click();
+  await dialog.getByText('Wrong password, or the file is damaged.').waitFor();
+  await dialog.getByLabel('Backup password').fill('a long backup password');
+  await dialog.getByRole('button', { name: 'Open backup' }).click();
+  await dialog.getByText(/with 1 accounts and 3 transactions/).waitFor();
+  await dialog.getByRole('button', { name: 'Replace my data' }).click();
+  await page.getByText('Backup restored').waitFor();
+
   // Theme persists across reload.
   await page.getByRole('link', { name: 'Settings' }).click();
   await page.getByRole('radio', { name: 'Dark' }).click();
   await page.reload();
+  // With the app lock on, leaving the page locks Keel (the Android "background" behaviour).
+  await page.getByText('Keel is locked').waitFor();
+  for (const d of '24681357') await page.getByRole('button', { name: d, exact: true }).click();
   await page.getByRole('heading', { name: 'Settings' }).waitFor();
   assert((await page.locator('html').getAttribute('data-theme')) === 'dark', 'dark theme persisted');
 
@@ -137,7 +194,8 @@ let code = 0;
 try {
   await main();
 } catch (e) {
-  console.error('e2e smoke: FAILED -', e.message);
+  if (process.env.E2E_SHOTS && currentPage) await currentPage.screenshot({ path: join(process.env.E2E_SHOTS, 'e2e-failure.png') }).catch(() => {});
+  console.error('e2e smoke: FAILED -', e.message.split('\n').slice(0, 3).join(' | '));
   code = 1;
 } finally {
   for (const p of procs) p.kill('SIGTERM');

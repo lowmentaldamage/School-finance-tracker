@@ -17,6 +17,9 @@ export function CashflowChart({ data, currency, height = 240 }: { data: MonthFlo
   const compact = (v: number) => formatMoney(v, currency, { locale, compact: true });
   const full = (v: number) => formatMoney(v, currency, { locale });
   const rows = data.map((d) => ({ ...d, label: formatMonth(d.month, locale, 'short') }));
+  if (data.every((d) => d.income_minor === 0 && d.expense_minor === 0)) {
+    return <p className="py-16 text-center text-sm text-muted">{t('charts.no_data')}</p>;
+  }
 
   return (
     <figure className="flex flex-col gap-3">

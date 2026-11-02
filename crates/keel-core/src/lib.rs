@@ -4,12 +4,15 @@
 //! The Tauri app (`src-tauri`) exposes these functions as typed commands.
 
 pub mod api;
+pub mod backup;
+pub mod crypto;
 pub mod db;
 pub mod error;
 pub mod ids;
 pub mod keystore;
 pub mod money;
 pub mod repo;
+pub mod session;
 pub mod time;
 pub mod validate;
 
