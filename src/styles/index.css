@@ -12,6 +12,10 @@
   --surface-2: #eeeef0;
   --surface-3: #e4e4e7;
   --raised: #ffffff;
+  --chart-income: #3f8a5c;
+  --chart-expense: #3b3d43;
+  --chart-line: #46576e;
+  --chart-grid: #e7e7ea;
   --border: #dddde1;
   --border-strong: #c9c9ce;
   --text: #17181a;
@@ -39,6 +43,10 @@
     --surface-2: #232427;
     --surface-3: #2c2d31;
     --raised: #36373c;
+    --chart-income: #3f9463;
+    --chart-expense: #c9cad0;
+    --chart-line: #9aaac0;
+    --chart-grid: #2a2b2f;
     --border: #2d2e32;
     --border-strong: #3b3c41;
     --text: #ececee;
@@ -66,6 +74,10 @@
   --surface-2: #232427;
   --surface-3: #2c2d31;
   --raised: #36373c;
+  --chart-income: #3f9463;
+  --chart-expense: #c9cad0;
+  --chart-line: #9aaac0;
+  --chart-grid: #2a2b2f;
   --border: #2d2e32;
   --border-strong: #3b3c41;
   --text: #ececee;
@@ -92,6 +104,9 @@
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
   --color-raised: var(--raised);
+  --color-chart-income: var(--chart-income);
+  --color-chart-expense: var(--chart-expense);
+  --color-chart-line: var(--chart-line);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-text: var(--text);

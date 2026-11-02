@@ -6,6 +6,11 @@ import { appStatus } from '../api/client';
 import { useSettings } from '../api/hooks';
 import { Button, ErrorState, Spinner, ToastProvider } from '../components/ui';
 import { AccountsPage } from '../features/accounts/AccountsPage';
+import { AnalyticsPage } from '../features/analytics/AnalyticsPage';
+import { BudgetsPage } from '../features/budgets/BudgetsPage';
+import { DashboardPage } from '../features/dashboard/DashboardPage';
+import { GoalsPage } from '../features/goals/GoalsPage';
+import { RecurringPage } from '../features/recurring/RecurringPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
 import { Onboarding } from '../features/onboarding/Onboarding';
 import { SettingsPage } from '../features/settings/SettingsPage';
@@ -29,12 +34,17 @@ const router = createHashRouter([
       </QuickAddProvider>
     ),
     children: [
-      { index: true, element: <Navigate to="/transactions" replace /> },
+      { index: true, element: <Navigate to="/overview" replace /> },
+      { path: 'overview', element: <DashboardPage /> },
       { path: 'transactions', element: <TransactionsPage /> },
+      { path: 'budgets', element: <BudgetsPage /> },
+      { path: 'analytics', element: <AnalyticsPage /> },
+      { path: 'recurring', element: <RecurringPage /> },
+      { path: 'goals', element: <GoalsPage /> },
       { path: 'accounts', element: <AccountsPage /> },
       { path: 'categories', element: <CategoriesPage /> },
       { path: 'settings', element: <SettingsPage /> },
-      { path: '*', element: <Navigate to="/transactions" replace /> },
+      { path: '*', element: <Navigate to="/overview" replace /> },
     ],
   },
 ]);

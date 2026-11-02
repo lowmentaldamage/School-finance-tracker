@@ -8,6 +8,7 @@ import type { Theme } from '../../api/types';
 import { Button, Input, Page, PageHeader, Panel, Segmented, Select, useToast } from '../../components/ui';
 import { humanize } from '../../lib/errors';
 import { defaultLocale, formatMoney } from '../../lib/money';
+import { RatesPanel } from './RatesPanel';
 
 const LOCALES = ['system', 'en-IE', 'en-GB', 'en-US', 'de-DE', 'fr-FR', 'nl-NL', 'es-ES', 'it-IT', 'pt-PT', 'pl-PL', 'sv-SE', 'fi-FI', 'de-CH'];
 
@@ -114,6 +115,8 @@ export function SettingsPage() {
             </Row>
           </div>
         </Panel>
+
+        <RatesPanel />
 
         <Panel title={t('settings.security')}>
           <div className="divide-y divide-border">

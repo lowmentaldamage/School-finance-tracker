@@ -152,3 +152,214 @@ export interface ApiErrorPayload {
   field: string | null;
   message: string;
 }
+
+// Reports --------------------------------------------------------------------
+
+export interface DateRange {
+  from: string;
+  to: string;
+}
+
+export interface Summary {
+  currency: string;
+  income_minor: number;
+  expense_minor: number;
+  net_minor: number;
+  savings_rate_bp: number | null;
+  transaction_count: number;
+  missing_rates: string[];
+}
+
+export interface MonthFlow {
+  month: string;
+  income_minor: number;
+  expense_minor: number;
+  net_minor: number;
+}
+
+export interface CategoryTotal {
+  category_id: string | null;
+  name: string | null;
+  color: string | null;
+  amount_minor: number;
+  transaction_count: number;
+}
+
+export interface NetWorthPoint {
+  date: string;
+  assets_minor: number;
+  liabilities_minor: number;
+  net_minor: number;
+}
+
+export interface Balances {
+  currency: string;
+  assets_minor: number;
+  liabilities_minor: number;
+  net_minor: number;
+  missing_rates: string[];
+}
+
+export interface Rate {
+  id: string;
+  from_code: string;
+  to_code: string;
+  rate_e9: number;
+  valid_from: string;
+}
+
+export interface RateInput {
+  from_code: string;
+  to_code: string;
+  rate: string;
+  valid_from: string;
+}
+
+// Budgets --------------------------------------------------------------------
+
+export type BudgetStatus = 'ok' | 'warning' | 'over';
+
+export interface BudgetLine {
+  category_id: string | null;
+  name: string | null;
+  color: string | null;
+  limit_minor: number;
+  rollover: boolean;
+  carried_minor: number;
+  available_minor: number;
+  spent_minor: number;
+  remaining_minor: number;
+  used_bp: number;
+  status: BudgetStatus;
+  effective_month: string;
+}
+
+export interface BudgetMonth {
+  month: string;
+  currency: string;
+  lines: BudgetLine[];
+  overall: BudgetLine | null;
+  total_available_minor: number;
+  total_spent_minor: number;
+  unbudgeted_spent_minor: number;
+  missing_rates: string[];
+}
+
+export interface BudgetInput {
+  category_id: string | null;
+  month: string;
+  limit_minor: number;
+  rollover: boolean;
+}
+
+export interface BudgetHistoryPoint {
+  month: string;
+  budgeted_minor: number;
+  spent_minor: number;
+}
+
+// Recurring ------------------------------------------------------------------
+
+export type FreqUnit = 'day' | 'week' | 'month' | 'year';
+
+export interface RecurringRule {
+  id: string;
+  type: TxType;
+  account_id: string;
+  account_name: string;
+  currency: string;
+  to_account_id: string | null;
+  to_account_name: string | null;
+  amount_minor: number;
+  to_amount_minor: number | null;
+  category_id: string | null;
+  category_name: string | null;
+  category_color: string | null;
+  payee: string | null;
+  description: string | null;
+  payment_method: PaymentMethod | null;
+  freq_unit: FreqUnit;
+  freq_interval: number;
+  anchor_date: string;
+  end_date: string | null;
+  next_due_date: string | null;
+  active: boolean;
+  booked_count: number;
+}
+
+export interface RecurringInput {
+  type: TxType;
+  account_id: string;
+  amount_minor: number;
+  to_account_id?: string | null;
+  to_amount_minor?: number | null;
+  category_id?: string | null;
+  payee?: string | null;
+  description?: string | null;
+  payment_method?: PaymentMethod | null;
+  freq_unit: FreqUnit;
+  freq_interval: number;
+  anchor_date: string;
+  end_date?: string | null;
+  active: boolean;
+}
+
+export interface Occurrence {
+  rule_id: string;
+  date: string;
+  due: boolean;
+  type: TxType;
+  title: string;
+  amount_minor: number;
+  currency: string;
+  account_name: string;
+  category_name: string | null;
+  category_color: string | null;
+}
+
+export interface Upcoming {
+  items: Occurrence[];
+  currency: string;
+  due_count: number;
+  income_minor: number;
+  expense_minor: number;
+  missing_rates: string[];
+}
+
+// Goals ----------------------------------------------------------------------
+
+export type GoalStatus = 'active' | 'completed' | 'archived';
+
+export interface Goal {
+  id: string;
+  name: string;
+  target_minor: number;
+  currency: string;
+  deadline: string | null;
+  linked_account_id: string | null;
+  linked_account_name: string | null;
+  status: GoalStatus;
+  saved_minor: number;
+  remaining_minor: number;
+  progress_bp: number;
+  monthly_needed_minor: number | null;
+  months_left: number | null;
+  contribution_count: number;
+  created_at: string;
+}
+
+export interface GoalInput {
+  name: string;
+  target_minor: number;
+  currency: string;
+  deadline: string | null;
+  linked_account_id: string | null;
+}
+
+export interface Contribution {
+  id: string;
+  goal_id: string;
+  amount_minor: number;
+  date: string;
+  note: string | null;
+}

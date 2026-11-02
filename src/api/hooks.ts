@@ -2,6 +2,25 @@ import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tansta
 
 import { call } from './client';
 import type {
+  Balances,
+  BudgetHistoryPoint,
+  BudgetInput,
+  BudgetMonth,
+  CategoryTotal,
+  Contribution,
+  DateRange,
+  Goal,
+  GoalInput,
+  GoalStatus,
+  MonthFlow,
+  NetWorthPoint,
+  Occurrence,
+  Rate,
+  RateInput,
+  RecurringInput,
+  RecurringRule,
+  Summary,
+  Upcoming,
   Account,
   AccountInput,
   Category,
@@ -26,7 +45,7 @@ export const keys = {
 };
 
 /** Anything that changes balances or transaction lists invalidates these. */
-const DATA_ROOTS = ['accounts', 'categories', 'tags', 'transactions', 'payees'];
+const DATA_ROOTS = ['accounts', 'categories', 'tags', 'transactions', 'payees', 'reports', 'budgets', 'recurring', 'goals', 'rates'];
 
 /**
  * Returns an onSuccess handler that marks data stale. It does not wait for the refetch,
@@ -163,4 +182,162 @@ export function usePayees(prefix: string) {
     queryFn: () => call<string[]>('transactions.payees', { prefix, limit: 8 }),
     staleTime: 30_000,
   });
+}
+
+// Reports -------------------------------------------------------------------
+
+export function useSummary(range: DateRange) {
+  return useQuery({ queryKey: ['reports', 'summary', range], queryFn: () => call<Summary>('reports.summary', { ...range }) });
+}
+
+export function useCashflow(range: DateRange) {
+  return useQuery({ queryKey: ['reports', 'cashflow', range], queryFn: () => call<MonthFlow[]>('reports.cashflow', { ...range }) });
+}
+
+export function useByCategory(range: DateRange, kind: 'income' | 'expense', parentId: string | null = null) {
+  return useQuery({
+    queryKey: ['reports', 'by_category', range, kind, parentId],
+    queryFn: () => call<CategoryTotal[]>('reports.by_category', { range, kind, parent_id: parentId }),
+  });
+}
+
+export function useBalances() {
+  return useQuery({ queryKey: ['reports', 'balances'], queryFn: () => call<Balances>('reports.balances') });
+}
+
+export function useNetWorth(range: DateRange) {
+  return useQuery({ queryKey: ['reports', 'net_worth', range], queryFn: () => call<NetWorthPoint[]>('reports.net_worth', { ...range }) });
+}
+
+export function useActiveMonths() {
+  return useQuery({ queryKey: ['reports', 'active_months'], queryFn: () => call<string[]>('reports.active_months') });
+}
+
+// Exchange rates ------------------------------------------------------------
+
+export function useRates() {
+  return useQuery({ queryKey: ['rates'], queryFn: () => call<Rate[]>('rates.list') });
+}
+
+export function useSaveRate() {
+  const invalidate = useInvalidateData();
+  return useMutation({ mutationFn: (input: RateInput) => call<Rate>('rates.upsert', { input }), onSuccess: invalidate });
+}
+
+export function useDeleteRate() {
+  const invalidate = useInvalidateData();
+  return useMutation({ mutationFn: (id: string) => call<null>('rates.delete', { id }), onSuccess: invalidate });
+}
+
+// Budgets -------------------------------------------------------------------
+
+export function useBudgetMonth(month: string) {
+  return useQuery({ queryKey: ['budgets', 'month', month], queryFn: () => call<BudgetMonth>('budgets.month', { month }) });
+}
+
+export function useBudgetHistory(endMonth: string, count = 6) {
+  return useQuery({
+    queryKey: ['budgets', 'history', endMonth, count],
+    queryFn: () => call<BudgetHistoryPoint[]>('budgets.history', { end_month: endMonth, count }),
+  });
+}
+
+export function useSetBudget() {
+  const invalidate = useInvalidateData();
+  return useMutation({ mutationFn: (input: BudgetInput) => call<null>('budgets.set', { input }), onSuccess: invalidate });
+}
+
+// Recurring -----------------------------------------------------------------
+
+export function useRecurring() {
+  return useQuery({ queryKey: ['recurring', 'list'], queryFn: () => call<RecurringRule[]>('recurring.list') });
+}
+
+export function useUpcoming(days = 30) {
+  return useQuery({ queryKey: ['recurring', 'upcoming', days], queryFn: () => call<Upcoming>('recurring.upcoming', { days }) });
+}
+
+export function useSaveRecurring() {
+  const invalidate = useInvalidateData();
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: RecurringInput }) =>
+      id ? call<RecurringRule>('recurring.update', { id, input }) : call<RecurringRule>('recurring.create', { input }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteRecurring() {
+  const invalidate = useInvalidateData();
+  return useMutation({ mutationFn: (id: string) => call<null>('recurring.delete', { id }), onSuccess: invalidate });
+}
+
+export function useConfirmOccurrence() {
+  const invalidate = useInvalidateData();
+  return useMutation({
+    mutationFn: ({ o, amountMinor, date }: { o: Occurrence; amountMinor?: number; date?: string }) =>
+      call<Transaction>('recurring.confirm', {
+        rule_id: o.rule_id,
+        occurrence_date: o.date,
+        overrides: { ...(amountMinor !== undefined ? { amount_minor: amountMinor } : {}), ...(date ? { date } : {}) },
+      }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSkipOccurrence() {
+  const invalidate = useInvalidateData();
+  return useMutation({
+    mutationFn: (o: Occurrence) => call<RecurringRule>('recurring.skip', { rule_id: o.rule_id, occurrence_date: o.date }),
+    onSuccess: invalidate,
+  });
+}
+
+// Goals ---------------------------------------------------------------------
+
+export function useGoals() {
+  return useQuery({ queryKey: ['goals', 'list'], queryFn: () => call<Goal[]>('goals.list') });
+}
+
+export function useSaveGoal() {
+  const invalidate = useInvalidateData();
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: GoalInput }) =>
+      id ? call<Goal>('goals.update', { id, input }) : call<Goal>('goals.create', { input }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useGoalStatus() {
+  const invalidate = useInvalidateData();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: GoalStatus }) => call<Goal>('goals.set_status', { id, status }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteGoal() {
+  const invalidate = useInvalidateData();
+  return useMutation({ mutationFn: (id: string) => call<null>('goals.delete', { id }), onSuccess: invalidate });
+}
+
+export function useContributions(goalId: string | null) {
+  return useQuery({
+    queryKey: ['goals', 'contributions', goalId],
+    queryFn: () => call<Contribution[]>('goals.contributions', { id: goalId }),
+    enabled: !!goalId,
+  });
+}
+
+export function useContribute() {
+  const invalidate = useInvalidateData();
+  return useMutation({
+    mutationFn: (input: { goal_id: string; amount_minor: number; date: string; note: string | null }) =>
+      call<Goal>('goals.contribute', { input }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteContribution() {
+  const invalidate = useInvalidateData();
+  return useMutation({ mutationFn: (id: string) => call<Goal>('goals.delete_contribution', { id }), onSuccess: invalidate });
 }

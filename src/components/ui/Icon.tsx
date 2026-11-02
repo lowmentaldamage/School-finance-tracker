@@ -18,6 +18,13 @@ const PATHS = {
   arrowUpDown: 'M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3',
   transfer: 'M4 8h14l-3-3M20 16H6l3 3',
   check: 'M5 12l5 5L20 7',
+  home: 'M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-9.5z',
+  chart: 'M4 20h16M7 16v-5M12 16V7M17 16v-8',
+  repeat: 'M17 2l3 3-3 3M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3M20 13v2a4 4 0 0 1-4 4H4',
+  target: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 12h.01',
+  gauge: 'M4 18a8 8 0 1 1 16 0M12 18l4-6',
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  lock: 'M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3',
   alert: 'M12 8v5M12 16h.01M10.3 3.9L2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
 } as const;
 
