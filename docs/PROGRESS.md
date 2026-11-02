@@ -1,61 +1,52 @@
 # Keel — Progress
 
+Target: Android (APK). Windows and iOS are deferred.
+
 ## Phase 1 — Product planning
-- [x] Product interview
-- [x] Requirements draft (`docs/REQUIREMENTS.md`)
-- [x] Architecture and schema draft (`docs/ARCHITECTURE.md`)
-- [x] Requirements and architecture signed off by the owner
-- [x] Project scaffold (Tauri 2 + React + TypeScript + Vite + Tailwind), CI workflow (tests, lint, e2e, Windows installer)
+- [x] Product interview, requirements, architecture and schema (signed off)
+- [x] Project scaffold (Tauri 2 + React + TypeScript + Vite + Tailwind) and CI
 
 ## Phase 2 — Design
-- [x] Design tokens (grey palette, light and dark, typography, spacing)
-- [x] Core UI components (Button, Input, Select, Dialog, Menu, Panel, EmptyState, Toast, Amount, Segmented)
-- [x] App shell: desktop sidebar, mobile bottom tabs with central Add button
-- [x] Screens built: Onboarding, Transactions, Accounts, Categories, Settings
-- [ ] Screens to build: Dashboard, Budgets, Analytics, Goals, Recurring, Lock
+- [x] Grey design system, light and dark themes, reusable components
+- [x] Navigation: desktop sidebar; mobile bottom tabs, central Add button, More sheet
+- [x] All screens: Onboarding, Overview, Transactions, Budgets, Analytics, Recurring, Goals, Accounts, Categories, Settings, Lock
 
 ## Phase 3 — Core development
-- [x] Rust database layer: SQLCipher, migrations, schema v1, constraint triggers
-- [x] Device key storage (DPAPI on Windows; see interim note below)
-- [x] Accounts (create, edit, archive, delete when unused, balances)
-- [x] Categories (defaults, subcategories, colours, archive, delete with reassignment)
-- [x] Transactions (CRUD, transfers incl. cross-currency, tags, payees, search, filters, sort, paging, bulk delete)
-- [ ] Exchange-rate management and base-currency totals
-- [ ] Dashboard
-- [ ] Budgets
+- [x] Encrypted SQLite (SQLCipher), migrations, constraints and triggers
+- [x] Accounts, categories (with subcategories), transactions (transfers, tags, search, filters, sort, paging)
+- [x] Exchange rates (manual) and base-currency totals
+- [x] Overview dashboard
+- [x] Budgets (carry-forward limits, rollover, 80 %/100 % warnings, overall cap, history)
 
 ## Phase 4 — Advanced functionality
-- [ ] Analytics and charts
-- [ ] Savings goals
-- [ ] Recurring transactions and upcoming payments
-- [ ] Local notifications
-- [ ] CSV export and PDF monthly report
+- [x] Analytics: cash flow, category drill-down, savings-rate and net-worth trends, year comparison, custom ranges
+- [x] Savings goals (contributions or linked account)
+- [x] Recurring transactions with due/upcoming lists, record/skip
+- [x] CSV export
+- [ ] System notifications for bills and budgets (in-app reminders exist)
+- [ ] PDF monthly report
 
 ## Phase 5 — Security and reliability
-- [ ] Android Keystore wrapping of the database key (interim: key file in app-private storage, mode 0600)
-- [ ] App lock, biometrics, auto-lock, recovery key
-- [ ] Encrypted backup and restore, automatic backups
-- [ ] Delete all data
-- [ ] Integrity, offline and security review
+- [x] Database key wrapped by the Android Keystore
+- [x] App lock: 8-digit PIN or password, recovery key, biometrics, auto-lock, throttling
+- [x] Encrypted backup and restore
+- [x] Delete all data
+- [x] Release build without network permission; no Android cloud backup
+- [ ] Automatic scheduled backups
 - [ ] Bank CSV import
 
-## Phase 6 — Cross-platform packaging
-- [ ] Windows installer
-- [ ] Android APK (signed), permissions audit
-- [ ] Persistence and responsiveness verification on all platforms
+## Phase 6 — Packaging
+- [x] Android project, icon, splash, signed release APK built in CI
+- [ ] Emulator smoke test passing in CI (in progress)
+- [ ] Test on a physical phone
 
 ## Phase 7 — Product readiness
-- [ ] Icon and splash screen
-- [ ] Onboarding polish
-- [ ] User documentation and installation guide
-- [ ] Release preparation (unsigned Windows build)
+- [x] App icon and splash screen
+- [ ] User guide
+- [ ] Release signing key set up by the owner (see README)
 
 ## Test status
-- Rust: 30 tests (`cargo test -p keel-core`): money maths, validation, keystore, migrations, encryption at rest, wrong-key rejection, rekey, accounts, categories, transactions, filters, injection attempts.
-- Frontend: 38 tests (`npm test`): amount parsing and formatting, dates, filter state, translation key coverage.
-- End to end: `npm run e2e` drives the real UI against the real core and a fresh encrypted database (onboarding, add, validate, edit, delete, search, balances, reassignment guard, theme persistence).
-
-## Known limitations (current build)
-- The Android APK is not built yet (Phase 6). The UI is already responsive and touch-sized for it.
-- Totals across different currencies are not combined yet; the Accounts screen shows one total per currency.
-- Windows installer is produced by CI but has not yet been run on a real Windows machine.
+- Rust: 54 tests — money, validation, migrations, encryption at rest, wrong key, key file, app lock, throttling, recovery, biometric wrap, backup round-trip and tampering, CSV, accounts, categories, transactions, reports, budgets, recurring, goals.
+- Frontend: 40 tests — amount parsing/formatting, dates, periods, filters, translation coverage.
+- End to end (browser, real core): onboarding, transactions, validation, balances, search, edit/delete, category guard, app lock with wrong PIN, recovery-key unlock, encrypted backup and restore, theme persistence.
+- Android (CI emulator): onboarding, add transaction, balance, Keystore status, lock on background, PIN unlock, back button, data after restart.

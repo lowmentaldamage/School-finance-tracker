@@ -108,48 +108,56 @@ Rules:
 
 ## 5. Security model
 
-### 5.1 Key hierarchy (envelope encryption)
+### 5.1 Key hierarchy (envelope encryption) — as implemented
 
 ```
-DEK  (random 256-bit Data Encryption Key) ── encrypts ──► keel.db (SQLCipher)
- │
- ├─ wrapped by OS-KEK     (OS secure storage: Windows DPAPI / Android Keystore)
- ├─ wrapped by PIN-KEK    (Argon2id(PIN/password, salt))            — if app lock enabled
- ├─ wrapped by REC-KEK    (Argon2id(recovery key, salt))            — if app lock enabled
- └─ wrapped by BIO-KEK    (Android Keystore key gated by biometrics) — if biometrics enabled
+DEK  (random 256-bit key) ── encrypts ──► keel.db (SQLCipher, AES-256)
+
+keystore.json (mode 0600, app-private storage)
+ ├─ device:    Keystore( DEK )                                          — only when no app lock
+ └─ lock:
+     ├─ secret:    Keystore( XChaCha20-Poly1305( Argon2id(PIN/password), DEK ) )
+     ├─ recovery:  Keystore( XChaCha20-Poly1305( Argon2id(recovery key), DEK ) )
+     └─ biometric: BiometricKeystore( DEK )                              — optional
 ```
 
-- **No app lock:** the DEK is wrapped only by the OS-bound key. The database is unreadable if the file is copied to another machine or user account, but anyone using the unlocked device account can open Keel.
-- **App lock enabled:** the OS-only wrapping is removed. The DEK can be unwrapped only with the PIN or password, the recovery key, or biometrics.
-- Changing the password re-wraps the DEK; the database is not re-encrypted.
-- Wrapping uses XChaCha20-Poly1305 (AEAD). Argon2id parameters are tuned per platform, targeting about 0.5 s (with a memory floor of at least 64 MiB on desktop and 32 MiB on mobile).
-- Key material is held in `zeroize`-on-drop buffers and cleared on lock.
-
-### 5.1a Current implementation status
-- **Windows:** the database key is wrapped with DPAPI (current user scope) and stored in `keystore.json`.
-- **Android (and Linux dev builds):** the key is currently stored **unwrapped** in `keystore.json` inside the app's private storage, with file mode 0600. Other apps cannot read it on a non-rooted device, but anyone with root or a full filesystem image can. Android Keystore wrapping and the PIN/password wrapping (above) are Phase 5 work. The Settings screen states the current protection level truthfully.
-- If the database exists but `keystore.json` is missing, the app refuses to create a new key, so existing data is never silently replaced.
+- `Keystore(…)` = AES-256-GCM with a non-exportable key in the Android Keystore (hardware-backed on
+  most devices). `BiometricKeystore` uses a second Keystore key that can only be used after a strong
+  biometric check and is invalidated when fingerprints/faces are re-enrolled.
+- **No app lock:** the DEK is protected by the device key only. Copied files are unreadable off the
+  phone; anyone who can use the unlocked phone can open Keel.
+- **App lock on:** the device-only copy is deleted. Opening needs the PIN/password, the recovery key
+  or biometrics. Because the PIN-wrapped copy is also Keystore-wrapped, the PIN cannot be brute-forced
+  offline from copied files — guesses must go through this phone, and the app throttles them.
+- Argon2id parameters: 64 MiB, 3 passes, 1 lane (stored per wrap, so they can be raised later).
+- Changing the PIN re-wraps the DEK; the database is not re-encrypted. The recovery key survives a PIN change.
+- Key material is zeroed on drop; locking closes the database and forgets the DEK.
+- If the database exists but `keystore.json` is missing, Keel refuses to create a new key, so data is never silently replaced.
 
 ### 5.2 Recovery key
-A 128-bit random key, shown once as 8 groups of 4 characters (Crockford Base32), which the user writes down. Keel never stores it in plaintext.
+160 random bits shown once as 8 groups of 4 Crockford Base32 characters. Input is case-insensitive and tolerant of O/0 and I/L/1 confusion. A new key can be issued (the old one stops working). Keel never stores it.
 
 ### 5.3 Session and lock
-- Unlocking opens the database connection in the Rust process. Locking closes it and zeroes the DEK.
-- Auto-lock after inactivity (5 minutes by default). On mobile, the app locks immediately when sent to the background, after a configurable grace period.
-- Five wrong attempts trigger an increasing delay (30 s, 1 min, 5 min, …), stored in the database.
+- `keel_core::session::Session` owns the open database and the lock state. The Android app and the development server use the same code.
+- Auto-lock after inactivity (default 5 minutes; 1–60 configurable) and when the app goes to the background (immediately by default; 30 s / 1 min / 5 min grace).
+- After 5 wrong attempts: 30 s delay, doubling to a maximum of 1 hour. The counter lives in `keystore.json` (the database is closed while locked).
+- The Android back button closes the top dialog instead of leaving the screen.
 
 ### 5.4 Honest limitations
-- **Malware or someone with access to the unlocked device** can read data while Keel is unlocked. Encryption protects data at rest, not a compromised running system.
-- **PIN strength:** an 8-digit PIN has 100,000,000 combinations. With Argon2id at about 0.5 s per guess, an attacker who copies the encrypted file needs about 580 CPU-days to try them all. That is slow, but within reach of someone with many machines or GPUs. **A PIN protects against casual access. A strong password protects against a determined attacker.** The UI states this. On Android, biometrics use hardware-backed keys, which are stronger.
-- **No lock set:** protection depends entirely on the OS account. If the OS account is compromised, the data is too.
-- **Rooted or jailbroken devices** weaken OS key storage.
+- **Malware or someone with the unlocked app in hand** can read data while Keel is unlocked. Encryption protects data at rest, not a compromised running system.
+- **PIN strength:** an 8-digit PIN has 100,000,000 combinations. Offline guessing requires this phone's Keystore, and on-device guessing is throttled, so a PIN is strong against casual and moderate attackers. A long password is stronger still.
+- **Rooted devices** weaken the Keystore guarantees.
 - **CSV exports are plaintext** and are protected only by wherever the user saves them.
-- **Lost password and lost recovery key** means permanent data loss. That is by design.
-- Screenshots and the app-switcher preview: on Android, `FLAG_SECURE` is offered as a setting ("Hide in app switcher"), off by default.
+- **Lost PIN/password and lost recovery key** means permanent data loss. That is by design, and the UI says so.
+- Backups are only as strong as their password (minimum 10 characters, Argon2id).
 
-### 5.5 Platform hardening
-- **Android:** `allowBackup=false`, `dataExtractionRules` excluding everything, minimal permissions (`POST_NOTIFICATIONS`, `USE_BIOMETRIC`, `SCHEDULE_EXACT_ALARM` only if needed). The `INTERNET` permission is removed from the manifest if the Tauri build permits it; this is verified in Phase 6.
-- **Windows:** the database sits in `%APPDATA%\Keel`, with the ACL inherited from the user profile.
+### 5.5 Platform hardening (Android)
+- `allowBackup=false`, `fullBackupContent` and `dataExtractionRules` exclude everything: Android never copies Keel's data to the cloud or another device.
+- Release builds remove the `INTERNET` permission; Keel makes no network requests at all.
+- File import/export uses the system file picker (Storage Access Framework): no storage permission.
+- `FileProvider` is limited to the app's export cache folder.
+- Optional `FLAG_SECURE` ("Hide in app switcher") blanks the recent-apps preview and blocks screenshots.
+- Content Security Policy forbids remote scripts, styles, fonts and connections.
 
 ## 6. Database schema (migration `0001_init`)
 
@@ -354,11 +362,12 @@ Numbered SQL files are embedded in the binary and applied in one transaction at 
 ## 7. Backup format (`.keelbak`)
 
 ```
-magic "KEELBAK1" | header JSON (version, schema_ver, created_at, kdf params, salt, nonce)
-| XChaCha20-Poly1305( zstd( SQLite logical dump of all tables ) )
+"KEELBAK1" | u32 LE header length | header JSON {format, app, schema_version, created_at, kdf, salt}
+| nonce(24) | XChaCha20-Poly1305( JSON dump of all user tables ), header as associated data
 ```
-- It is encrypted with a key derived (Argon2id) from a **backup password** (by default the app password, which the user can change). It is independent of the device, so it can be restored on another device or platform (Windows ↔ Android).
-- Restore steps: verify the AEAD tag → check the schema version (migrate forward if older) → write to a temporary database → run integrity checks (`PRAGMA integrity_check`, foreign-key check) → swap atomically → reopen. The pre-restore safety backup is kept.
+- Encrypted with Argon2id(backup password, ≥10 characters). Independent of the device, so it can be restored on another phone.
+- Restore: verify tag → check schema version → in one transaction delete and re-insert every table, accepting only column names that exist in the schema → foreign-key check → commit. Any failure rolls back; nothing changes.
+- A wrong password or a modified file is rejected.
 
 ## 8. Recurring engine
 
@@ -366,7 +375,7 @@ magic "KEELBAK1" | header JSON (version, schema_ver, created_at, kdf params, sal
 - Occurrences on or before today show as **Due**. Later ones show as **Upcoming**.
 - Confirming creates the transaction with `(recurring_rule_id, occurrence_date)` and advances `next_due_date`, both in one database transaction. The unique index prevents double booking.
 - Month-end handling: an anchor on the 31st falls on the last day of shorter months.
-- Local notifications are scheduled through the Tauri notification plugin when enabled.
+- Reminders are shown in the app (Overview and Recurring). System notifications are not built yet.
 
 ## 9. Testing strategy
 
