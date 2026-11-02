@@ -128,13 +128,31 @@ jobs:
           path: dist-android/*.apk
           if-no-files-found: error
 
+
+  android-emulator:
+    name: Android emulator test
+    needs: android
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: keel-android
+          path: dist-android
+      - name: Signing label
+        run: |
+          ls -la dist-android
+          f=$(ls dist-android/keel-*-signed-universal.apk); s=${f#dist-android/keel-}; echo "SIGNING=${s%%-signed*}" >> "$GITHUB_ENV"
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Install Playwright client
-        run: npm install --no-save playwright
+        run: npm install --no-save --no-package-lock playwright
       - name: Emulator tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
