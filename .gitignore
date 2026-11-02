@@ -1,0 +1,13 @@
+node_modules/
+dist/
+target/
+coverage/
+*.log
+.DS_Store
+.vite/
+src-tauri/gen/schemas/
+*.db
+*.db-wal
+*.db-shm
+*.keystore
+*.jks
