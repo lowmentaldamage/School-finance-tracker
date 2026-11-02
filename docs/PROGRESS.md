@@ -4,7 +4,7 @@
 - [x] Product interview
 - [x] Requirements draft (`docs/REQUIREMENTS.md`)
 - [x] Architecture and schema draft (`docs/ARCHITECTURE.md`)
-- [ ] Requirements and architecture signed off by the owner
+- [x] Requirements and architecture signed off by the owner
 - [ ] Project scaffold (Tauri 2 + React + TypeScript + Vite + Tailwind), CI test workflow
 
 ## Phase 2 — Design
@@ -38,11 +38,10 @@
 ## Phase 6 — Cross-platform packaging
 - [ ] Windows installer
 - [ ] Android APK (signed), permissions audit
-- [ ] iOS build (simulator, then TestFlight once the Apple account exists)
 - [ ] Persistence and responsiveness verification on all platforms
 
 ## Phase 7 — Product readiness
 - [ ] Icon and splash screen
 - [ ] Onboarding polish
 - [ ] User documentation and installation guide
-- [ ] Code signing and release preparation
+- [ ] Release preparation (unsigned Windows build)

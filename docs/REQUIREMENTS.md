@@ -1,9 +1,9 @@
 # Keel — Product Requirements (v1)
 
-Status: **Draft for sign-off**
+Status: **Approved**
 Last updated: 2026-11-02
 
-Keel is a local-first, privacy-focused personal finance tracker for Windows, Android and iOS. It runs fully offline, stores all data on the user's device in an encrypted database, and makes no network calls.
+Keel is a local-first, privacy-focused personal finance tracker for Windows and Android (iOS planned later). It runs fully offline, stores all data on the user's device in an encrypted database, and makes no network calls.
 
 ---
 
@@ -18,16 +18,15 @@ Keel is a local-first, privacy-focused personal finance tracker for Windows, And
 | Icon | Monogram mark in the grey palette (designed in Phase 7) |
 | Source model | Closed source |
 | Pricing (future) | Free core plus a one-time "Pro" unlock. **Not built in v1**; Pro features will be defined later. v1 has no paywall. |
-| Distribution | v1: direct download (Windows installer, Android APK). Later: Microsoft Store, Google Play, App Store. |
+| Distribution | v1: direct download (Windows installer, Android APK). Later: Microsoft Store, Google Play. |
 
 ## 2. Platforms
 
 | Platform | Minimum | Output | Notes |
 |---|---|---|---|
-| Windows | 10 / 11 (x64) | `.msi` / `.exe` installer | Without a code-signing certificate, Windows SmartScreen shows a warning. A certificate costs about €100–400 per year (decide in Phase 7). |
+| Windows | 10 / 11 (x64) | `.msi` / `.exe` installer | Shipped unsigned. The Windows SmartScreen warning on install is accepted. |
 | Android | 8.0 (API 26) | Signed `.apk` | Sideloaded at first, built to meet Google Play's requirements later |
-| iOS | 16 | `.ipa` through TestFlight or the App Store | Must be built on macOS with Xcode (CI macOS runner). Needs an Apple Developer account ($99 per year) to run on real devices. Before that, iOS is simulator-only. |
-| macOS / Linux | — | — | Out of scope for v1. The architecture allows them later at low cost. |
+| iOS, macOS, Linux | — | — | Out of scope for v1. The shared codebase keeps them possible later (iOS needs a Mac and an Apple Developer account). |
 
 ## 3. Data model scope
 
@@ -118,8 +117,8 @@ Three steps: confirm currency (EUR), create the first account, set an optional P
 | Requirement | Decision |
 |---|---|
 | Database encryption | Always encrypted (SQLCipher, AES-256). See ARCHITECTURE.md §5 for key handling. |
-| App lock | Optional PIN (minimum 6 digits) or password. When set, it is needed to decrypt the database. |
-| Biometrics | Optional fingerprint, face unlock or Face ID, available once a PIN or password is set |
+| App lock | Optional PIN (exactly 8 digits) or password. When set, it is needed to decrypt the database. |
+| Biometrics | Optional fingerprint or face unlock, available once a PIN or password is set |
 | Forgotten password | Data cannot be recovered without the password or the **recovery key** shown once at setup. This is stated clearly to the user. |
 | Auto-lock | After 5 minutes of inactivity (adjustable), and when the app goes to the background on mobile |
 | Network | **None.** No telemetry, no crash reporting, no analytics, no remote fonts or scripts. |
@@ -149,10 +148,10 @@ Three steps: confirm currency (EUR), create the first account, set an optional P
 
 ## 8. Out of scope for v1
 
-Cloud sync, multi-device, multi-user or household profiles, bank connections, live exchange rates, receipt attachments, split transactions, investment price tracking, macOS/Linux builds, the paid tier, languages other than English.
+iOS, cloud sync, multi-device, multi-user or household profiles, bank connections, live exchange rates, receipt attachments, split transactions, investment price tracking, macOS/Linux builds, the paid tier, languages other than English.
 
-## 9. Assumptions to confirm
+## 9. Confirmed decisions
 
-1. A 6-digit minimum PIN is acceptable. Shorter PINs are too weak for offline brute-force (see ARCHITECTURE.md §5.4).
-2. iOS ships after an Apple Developer account exists. Until then, iOS is verified in the simulator only.
-3. Windows code signing is decided in Phase 7. Unsigned builds work but show a SmartScreen warning.
+1. The PIN is 8 digits. Passwords are also allowed.
+2. Mobile is Android only for now. iOS is deferred.
+3. The Windows build is unsigned, and the SmartScreen warning is accepted.

@@ -1,6 +1,6 @@
 # Keel — Architecture (v1)
 
-Status: **Draft for sign-off**
+Status: **Approved**
 Last updated: 2026-11-02
 
 ---
@@ -9,7 +9,7 @@ Last updated: 2026-11-02
 
 | Layer | Choice | Reason |
 |---|---|---|
-| App shell | **Tauri 2** | One codebase for Windows, Android and iOS. Small binaries (about 5–10 MB on desktop). A Rust backend keeps the database and crypto out of the webview. |
+| App shell | **Tauri 2** | One codebase for Windows and Android (iOS possible later). Small binaries (about 5–10 MB on desktop). A Rust backend keeps the database and crypto out of the webview. |
 | Backend | **Rust** | Memory-safe, owns all data access, crypto, backup and file I/O |
 | Database | **SQLite with SQLCipher** through `rusqlite` (`bundled-sqlcipher`) | Embedded, reliable, encrypted at rest, transactional |
 | Frontend | **React 18 + TypeScript (strict) + Vite** | Mature ecosystem and type safety across the UI |
@@ -91,7 +91,7 @@ Rules:
 │  ├─ capabilities/
 │  └─ tauri.conf.json
 ├─ e2e/                     Playwright tests
-└─ .github/workflows/       CI: test, Windows build, Android build, iOS build
+└─ .github/workflows/       CI: test, Windows build, Android build
 ```
 
 ## 4. Money and dates
@@ -110,10 +110,10 @@ Rules:
 ```
 DEK  (random 256-bit Data Encryption Key) ── encrypts ──► keel.db (SQLCipher)
  │
- ├─ wrapped by OS-KEK     (OS secure storage: Windows DPAPI / Android Keystore / iOS Keychain)
+ ├─ wrapped by OS-KEK     (OS secure storage: Windows DPAPI / Android Keystore)
  ├─ wrapped by PIN-KEK    (Argon2id(PIN/password, salt))            — if app lock enabled
  ├─ wrapped by REC-KEK    (Argon2id(recovery key, salt))            — if app lock enabled
- └─ wrapped by BIO-KEK    (Keystore/Keychain key gated by biometrics) — if biometrics enabled
+ └─ wrapped by BIO-KEK    (Android Keystore key gated by biometrics) — if biometrics enabled
 ```
 
 - **No app lock:** the DEK is wrapped only by the OS-bound key. The database is unreadable if the file is copied to another machine or user account, but anyone using the unlocked device account can open Keel.
@@ -132,16 +132,15 @@ A 128-bit random key, shown once as 8 groups of 4 characters (Crockford Base32),
 
 ### 5.4 Honest limitations
 - **Malware or someone with access to the unlocked device** can read data while Keel is unlocked. Encryption protects data at rest, not a compromised running system.
-- **PIN strength:** a 6-digit PIN has 1,000,000 combinations. With Argon2id at about 0.5 s per guess, an attacker who copies the encrypted file can try them all in about 6 CPU-days, which is feasible with hardware. **A PIN protects against casual access. A strong password protects against a determined attacker.** The UI states this. On Android and iOS, biometrics use hardware-backed keys, which are stronger.
+- **PIN strength:** an 8-digit PIN has 100,000,000 combinations. With Argon2id at about 0.5 s per guess, an attacker who copies the encrypted file needs about 580 CPU-days to try them all. That is slow, but within reach of someone with many machines or GPUs. **A PIN protects against casual access. A strong password protects against a determined attacker.** The UI states this. On Android, biometrics use hardware-backed keys, which are stronger.
 - **No lock set:** protection depends entirely on the OS account. If the OS account is compromised, the data is too.
 - **Rooted or jailbroken devices** weaken OS key storage.
 - **CSV exports are plaintext** and are protected only by wherever the user saves them.
 - **Lost password and lost recovery key** means permanent data loss. That is by design.
-- Screenshots and the app-switcher preview: on Android, `FLAG_SECURE` is offered as a setting ("Hide in app switcher"), off by default. On iOS, a blur overlay is applied when the app goes to the background.
+- Screenshots and the app-switcher preview: on Android, `FLAG_SECURE` is offered as a setting ("Hide in app switcher"), off by default.
 
 ### 5.5 Platform hardening
 - **Android:** `allowBackup=false`, `dataExtractionRules` excluding everything, minimal permissions (`POST_NOTIFICATIONS`, `USE_BIOMETRIC`, `SCHEDULE_EXACT_ALARM` only if needed). The `INTERNET` permission is removed from the manifest if the Tauri build permits it; this is verified in Phase 6.
-- **iOS:** Data Protection class `Complete` on the database file, and no iCloud backup of the database (`isExcludedFromBackup`).
 - **Windows:** the database sits in `%APPDATA%\Keel`, with the ACL inherited from the user profile.
 
 ## 6. Database schema (migration `0001_init`)
@@ -350,7 +349,7 @@ Numbered SQL files are embedded in the binary and applied in one transaction at 
 magic "KEELBAK1" | header JSON (version, schema_ver, created_at, kdf params, salt, nonce)
 | XChaCha20-Poly1305( zstd( SQLite logical dump of all tables ) )
 ```
-- It is encrypted with a key derived (Argon2id) from a **backup password** (by default the app password, which the user can change). It is independent of the device, so it can be restored on another device or platform.
+- It is encrypted with a key derived (Argon2id) from a **backup password** (by default the app password, which the user can change). It is independent of the device, so it can be restored on another device or platform (Windows ↔ Android).
 - Restore steps: verify the AEAD tag → check the schema version (migrate forward if older) → write to a temporary database → run integrity checks (`PRAGMA integrity_check`, foreign-key check) → swap atomically → reopen. The pre-restore safety backup is kept.
 
 ## 8. Recurring engine
@@ -379,11 +378,10 @@ Test fixtures are generated in test code only. Production code ships no sample d
 | Target | Runner | Output | Secrets needed |
 |---|---|---|---|
 | Tests and lint | ubuntu | — | — |
-| Windows | windows-latest | `.msi` + NSIS `.exe` | Code-signing certificate (optional, Phase 7) |
+| Windows | windows-latest | `.msi` + NSIS `.exe` (unsigned) | — |
 | Android | ubuntu + Android SDK/NDK | Signed `.apk` (and `.aab` later) | Release keystore and password |
-| iOS | macos-latest + Xcode | `.ipa` → TestFlight | Apple Developer certificate, provisioning profile, App Store Connect API key |
 
-The Android keystore and Apple credentials stay in GitHub Actions secrets and are never committed. **Losing the Android keystore means updates can't be installed over existing installs.** The user must keep a safe offline copy.
+The Android keystore stays in GitHub Actions secrets and are never committed. **Losing the Android keystore means updates can't be installed over existing installs.** The user must keep a safe offline copy.
 
 ## 11. Future sync readiness (not built in v1)
 - UUIDv7 IDs and `updated_at` on every row.
