@@ -129,9 +129,13 @@ class Cdp {
   }
 }
 
+let current = null;
+
 async function main() {
+  sh('adb logcat -c');
   sh(`adb shell am start -n ${PKG}/.MainActivity`);
   let p = await Cdp.connect();
+  current = p;
 
   await p.text('Welcome to Keel', 60_000);
   shot('01-onboarding');
@@ -188,6 +192,7 @@ async function main() {
   sh(`adb shell am force-stop ${PKG}`);
   sh(`adb shell am start -n ${PKG}/.MainActivity`);
   p = await Cdp.connect();
+  current = p;
   await p.text('Keel is locked', 30_000);
   for (const d of '24681357') await p.click(d);
   await p.click('Transactions');
@@ -199,10 +204,23 @@ async function main() {
   console.log('android smoke: passed');
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   try {
     shot('failure');
   } catch {}
   console.error('android smoke: FAILED -', e.message);
+  // Diagnostics: what the app shows, script errors, and the Android log.
+  try {
+    if (current) {
+      console.error('--- screen text ---\n' + (await current.eval('document.body.innerText.slice(0, 1500)')));
+      console.error('--- location --- ' + (await current.eval('location.href')));
+      console.error('--- page errors --- ' + JSON.stringify(current.errors));
+    }
+  } catch (err) {
+    console.error('could not read the page: ' + err.message);
+  }
+  try {
+    console.error('--- logcat ---\n' + sh('adb logcat -d -v brief | grep -iE "keel|tauri|rust|AndroidRuntime|chromium|console" | tail -120'));
+  } catch {}
   process.exit(1);
 });
