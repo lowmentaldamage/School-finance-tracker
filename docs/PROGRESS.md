@@ -38,7 +38,7 @@ Target: Android (APK). Windows and iOS are deferred.
 
 ## Phase 6 — Packaging
 - [x] Android project, icon, splash, signed release APK built in CI
-- [ ] Emulator smoke test passing in CI (in progress)
+- [x] Emulator smoke test passing in CI
 - [ ] Test on a physical phone
 
 ## Phase 7 — Product readiness
