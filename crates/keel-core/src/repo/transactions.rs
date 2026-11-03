@@ -382,7 +382,13 @@ fn create_inner(
     let c = clean(conn, input, None)?;
     let id = new_id();
     let now = now_utc();
-    let tx = conn.unchecked_transaction()?;
+    // Join the caller's transaction (e.g. a CSV import) or open our own.
+    let own = if conn.is_autocommit() {
+        Some(conn.unchecked_transaction()?)
+    } else {
+        None
+    };
+    let tx: &Connection = conn;
     tx.execute(
         "INSERT INTO transactions (id, type, account_id, amount_minor, to_account_id, to_amount_minor, date,
                                    category_id, payee, description, notes, payment_method,
@@ -407,15 +413,23 @@ fn create_inner(
         ],
     )
     .map_err(map_constraint)?;
-    tags::set_for_transaction(&tx, &id, &c.tags)?;
-    tx.commit()?;
+    tags::set_for_transaction(tx, &id, &c.tags)?;
+    if let Some(t) = own {
+        t.commit()?;
+    }
     get(conn, &id)
 }
 
 pub fn update(conn: &Connection, id: &str, input: &TransactionInput) -> CoreResult<Transaction> {
     let existing = get(conn, id)?;
     let c = clean(conn, input, Some(&existing))?;
-    let tx = conn.unchecked_transaction()?;
+    // Join the caller's transaction (e.g. a CSV import) or open our own.
+    let own = if conn.is_autocommit() {
+        Some(conn.unchecked_transaction()?)
+    } else {
+        None
+    };
+    let tx: &Connection = conn;
     tx.execute(
         "UPDATE transactions SET type = ?2, account_id = ?3, amount_minor = ?4, to_account_id = ?5,
                 to_amount_minor = ?6, date = ?7, category_id = ?8, payee = ?9, description = ?10,
@@ -438,8 +452,10 @@ pub fn update(conn: &Connection, id: &str, input: &TransactionInput) -> CoreResu
         ],
     )
     .map_err(map_constraint)?;
-    tags::set_for_transaction(&tx, id, &c.tags)?;
-    tx.commit()?;
+    tags::set_for_transaction(tx, id, &c.tags)?;
+    if let Some(t) = own {
+        t.commit()?;
+    }
     get(conn, id)
 }
 

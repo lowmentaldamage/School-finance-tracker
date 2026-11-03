@@ -21,7 +21,7 @@ export async function saveFile(name: string, mime: string, dataB64: string): Pro
 }
 
 /** Let the user pick a file. Resolves to base64 contents, or null if cancelled. */
-export async function pickFile(): Promise<string | null> {
+export async function pickFile(accept = '.keelbak,application/octet-stream'): Promise<string | null> {
   if (isTauri()) {
     const r = await invokeNative<{ data: string }>('open_file');
     return r.data ? r.data : null;
@@ -29,7 +29,7 @@ export async function pickFile(): Promise<string | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.keelbak,application/octet-stream';
+    input.accept = accept;
     input.onchange = () => {
       const f = input.files?.[0];
       if (!f) return resolve(null);

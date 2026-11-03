@@ -1,0 +1,89 @@
+name: Release
+
+# Publishes a signed APK on the GitHub Releases page.
+# Run it from Actions → Release → "Run workflow" (works from the phone), or push a tag vX.Y.Z.
+# The version comes from src-tauri/tauri.conf.json; bump it before each release.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 27.2.12479018
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Android NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${NDK_VERSION}" > /dev/null
+          NDK="$ANDROID_HOME/ndk/${NDK_VERSION}"
+          { echo "NDK_HOME=$NDK"; echo "ANDROID_NDK_ROOT=$NDK"; echo "ANDROID_NDK_HOME=$NDK"; } >> "$GITHUB_ENV"
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "$TC" >> "$GITHUB_PATH"
+          for t in aarch64_linux_android armv7_linux_androideabi i686_linux_android x86_64_linux_android; do
+            echo "RANLIB_${t}=$TC/llvm-ranlib" >> "$GITHUB_ENV"
+            echo "AR_${t}=$TC/llvm-ar" >> "$GITHUB_ENV"
+          done
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - name: Version
+        run: |
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v$V" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match app version v$V" >&2; exit 1
+          fi
+      - name: Release signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "Release signing secrets are missing. See README → Release signing." >&2; exit 1
+          fi
+          KS="$RUNNER_TEMP/keel-release.p12"
+          echo "$KEYSTORE_B64" | base64 -d > "$KS"
+          {
+            echo "storeFile=$KS"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > src-tauri/gen/android/keystore.properties
+      - name: Build signed APK
+        run: npx tauri android build --apk
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="keel-${VERSION}.apk"
+          cp src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+          NOTES="Keel ${VERSION} for Android 8.0+.
+
+          Install: download ${APK} on your phone, open it, allow installs from your browser if asked.
+          Update: install over the previous version; your data is kept.
+          SHA-256: $(cut -d' ' -f1 "$APK.sha256")"
+          if gh release view "v${VERSION}" > /dev/null 2>&1; then
+            gh release upload "v${VERSION}" "$APK" "$APK.sha256" --clobber
+          else
+            gh release create "v${VERSION}" "$APK" "$APK.sha256" --title "Keel ${VERSION}" --notes "$NOTES" --target "${GITHUB_SHA}"
+          fi

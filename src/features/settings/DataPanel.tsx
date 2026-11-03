@@ -8,6 +8,9 @@ import { useLocale } from '../../app/preferences';
 import { Button, Dialog, Field, Input, Panel, useToast } from '../../components/ui';
 import { fieldError, humanize } from '../../lib/errors';
 import { pickFile, saveFile } from '../../lib/platform';
+import { monthKey, shiftMonth, formatMonth } from '../../lib/period';
+import { ImportDialog } from './ImportDialog';
+import { Select } from '../../components/ui';
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -25,7 +28,21 @@ export function DataPanel() {
   const { t } = useTranslation();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
-  const [dlg, setDlg] = useState<null | 'backup' | 'restore' | 'delete'>(null);
+  const locale = useLocale();
+  const [dlg, setDlg] = useState<null | 'backup' | 'restore' | 'delete' | 'import'>(null);
+  const [reportMonth, setReportMonth] = useState(shiftMonth(monthKey(), -1));
+
+  async function exportPdf() {
+    setBusy('pdf');
+    try {
+      const f = await call<FileData>('report.monthly_pdf', { month: reportMonth });
+      if (await saveFile(f.file_name, 'application/pdf', f.data_b64)) toast(t('data.pdf_saved'));
+    } catch (e) {
+      toast(humanize(fieldError(e).message), 'negative');
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function exportCsv() {
     setBusy('csv');
@@ -48,6 +65,23 @@ export function DataPanel() {
         <Row label={t('data.restore')} hint={t('data.restore_hint')}>
           <Button onClick={() => setDlg('restore')}>{t('data.restore_backup')}</Button>
         </Row>
+        <Row label={t('data.report')} hint={t('data.report_hint')}>
+          <div className="flex gap-2">
+            <Select aria-label={t('data.report_month')} value={reportMonth} onChange={(e) => setReportMonth(e.target.value)} className="w-[150px]">
+              {Array.from({ length: 13 }, (_, i) => shiftMonth(monthKey(), -i)).map((m) => (
+                <option key={m} value={m}>
+                  {formatMonth(m, locale)}
+                </option>
+              ))}
+            </Select>
+            <Button onClick={() => void exportPdf()} loading={busy === 'pdf'}>
+              {t('data.save_pdf')}
+            </Button>
+          </div>
+        </Row>
+        <Row label={t('import.title')} hint={t('import.hint')}>
+          <Button onClick={() => setDlg('import')}>{t('import.button')}</Button>
+        </Row>
         <Row label={t('data.csv')} hint={t('data.csv_hint')}>
           <Button onClick={() => void exportCsv()} loading={busy === 'csv'}>
             {t('data.export_csv')}
@@ -62,6 +96,7 @@ export function DataPanel() {
       <BackupDialog open={dlg === 'backup'} onClose={() => setDlg(null)} />
       <RestoreDialog open={dlg === 'restore'} onClose={() => setDlg(null)} />
       <DeleteAllDialog open={dlg === 'delete'} onClose={() => setDlg(null)} />
+      <ImportDialog open={dlg === 'import'} onClose={() => setDlg(null)} />
     </Panel>
   );
 }

@@ -82,6 +82,30 @@ struct RestoreArg {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct FileArg {
+    data_b64: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImportArg {
+    data_b64: String,
+    mapping: crate::import::Mapping,
+}
+
+fn decode_b64(s: &str) -> CoreResult<Vec<u8>> {
+    B64.decode(s.as_bytes())
+        .map_err(|_| CoreError::validation("file", "could not be read"))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MonthArg {
+    month: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ConfirmArg {
     confirm: String,
 }
@@ -306,6 +330,28 @@ impl Session {
                 let csv = backup::transactions_csv(self.conn()?)?;
                 Ok(
                     json!({ "file_name": format!("keel-transactions-{}.csv", file_stamp()), "data_b64": B64.encode(csv.as_bytes()) }),
+                )
+            }
+            "import.preview" => {
+                let p: FileArg = args(a)?;
+                Ok(
+                    serde_json::to_value(crate::import::preview(&decode_b64(&p.data_b64)?)?)
+                        .unwrap_or(Value::Null),
+                )
+            }
+            "import.run" => {
+                let p: ImportArg = args(a)?;
+                let bytes = decode_b64(&p.data_b64)?;
+                Ok(
+                    serde_json::to_value(crate::import::run(self.conn()?, &bytes, &p.mapping)?)
+                        .unwrap_or(Value::Null),
+                )
+            }
+            "report.monthly_pdf" => {
+                let p: MonthArg = args(a)?;
+                let pdf = crate::pdf::monthly_report(self.conn()?, &p.month)?;
+                Ok(
+                    json!({ "file_name": format!("keel-report-{}.pdf", p.month), "data_b64": B64.encode(pdf) }),
                 )
             }
             "data.delete_all" => {
