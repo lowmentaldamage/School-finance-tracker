@@ -55,6 +55,9 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       NDK_VERSION: 27.2.12479018
+      # Dropbox sync is included only when the repository variable DROPBOX_APP_KEY is set.
+      DROPBOX_APP_KEY: ${{ vars.DROPBOX_APP_KEY }}
+      VITE_DROPBOX_APP_KEY: ${{ vars.DROPBOX_APP_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

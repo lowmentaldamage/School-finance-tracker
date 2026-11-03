@@ -153,7 +153,7 @@ keystore.json (mode 0600, app-private storage)
 
 ### 5.5 Platform hardening (Android)
 - `allowBackup=false`, `fullBackupContent` and `dataExtractionRules` exclude everything: Android never copies Keel's data to the cloud or another device.
-- Release builds remove the `INTERNET` permission; Keel makes no network requests at all.
+- Without a Dropbox app key, release builds remove the `INTERNET` permission. With Dropbox sync compiled in, the permission is present but the native layer only allows HTTPS requests to `api.dropboxapi.com` and `content.dropboxapi.com`, and only when the user has connected Dropbox. The web view itself has no network access (CSP `connect-src` is IPC only).
 - File import/export uses the system file picker (Storage Access Framework): no storage permission.
 - `FileProvider` is limited to the app's export cache folder.
 - Optional `FLAG_SECURE` ("Hide in app switcher") blanks the recent-apps preview and blocks screenshots.
@@ -369,13 +369,19 @@ Numbered SQL files are embedded in the binary and applied in one transaction at 
 - Restore: verify tag → check schema version → in one transaction delete and re-insert every table, accepting only column names that exist in the schema → foreign-key check → commit. Any failure rolls back; nothing changes.
 - A wrong password or a modified file is rejected.
 
+## 7a. Sync and automatic backups
+- **Dropbox sync:** OAuth 2 with PKCE (no client secret); the refresh token is stored in the encrypted database under a `secret.` key that never leaves the core through `settings.all` or backups. The app reads and writes a single file, `/keel.keelbak`, in its own Dropbox app folder. It is the same encrypted backup format, sealed with a key derived from a *sync password*; the salt travels in the file header so a second phone can derive the same key from the password.
+- Every data-changing command marks the database dirty. A sync pass: no remote file → upload; remote unchanged and local dirty → upload with `update` mode (Dropbox rejects it if someone else wrote meanwhile); remote changed and local clean → download and restore; both changed → the user chooses. Sync runs on open, 20 s after changes and before the app goes to the background.
+- **Automatic backups:** weekly when the app is opened, written through the Storage Access Framework to a folder the user picked (persisted permission), keeping the five newest `keel-auto-*.keelbak` files. Encrypted with a stored key derived from a backup password.
+- Restores never overwrite device-local settings (`secret.*`, `sync.*`, `backup.auto.*`).
+
 ## 8. Recurring engine
 
 - When the app starts or unlocks, for each active rule it computes occurrences from `next_due_date` up to today plus 30 days. Skipped ones are excluded.
 - Occurrences on or before today show as **Due**. Later ones show as **Upcoming**.
 - Confirming creates the transaction with `(recurring_rule_id, occurrence_date)` and advances `next_due_date`, both in one database transaction. The unique index prevents double booking.
 - Month-end handling: an anchor on the 31st falls on the last day of shorter months.
-- Reminders are shown in the app (Overview and Recurring). System notifications are not built yet.
+- Optional phone reminders the day before each bill (09:00), scheduled with inexact `AlarmManager` alarms and re-scheduled after reboot. Lock-screen notifications show no details.
 
 ## 9. Testing strategy
 

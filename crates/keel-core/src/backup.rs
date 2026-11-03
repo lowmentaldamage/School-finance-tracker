@@ -23,6 +23,15 @@ use crate::time::now_utc;
 const MAGIC: &[u8; 8] = b"KEELBAK1";
 const MAX_BACKUP_BYTES: usize = 200 * 1024 * 1024;
 
+/// Settings that belong to this device and are never exported or overwritten by a restore:
+/// stored keys and tokens, sync state, automatic-backup folder.
+const LOCAL_SETTINGS: &str =
+    "(key LIKE 'secret.%' OR key LIKE 'sync.%' OR key LIKE 'backup.auto.%')";
+
+fn is_local_setting(key: &str) -> bool {
+    key.starts_with("secret.") || key.starts_with("sync.") || key.starts_with("backup.auto.")
+}
+
 /// User tables in dependency order (parents first).
 const TABLES: &[(&str, &str)] = &[
     ("settings", "key"),
@@ -83,7 +92,12 @@ fn bad_file() -> CoreError {
 fn dump(conn: &Connection) -> CoreResult<Payload> {
     let mut tables = BTreeMap::new();
     for (t, order) in TABLES {
-        let mut stmt = conn.prepare(&format!("SELECT * FROM {t} ORDER BY {order}"))?;
+        let filter = if *t == "settings" {
+            format!("WHERE NOT {LOCAL_SETTINGS}")
+        } else {
+            String::new()
+        };
+        let mut stmt = conn.prepare(&format!("SELECT * FROM {t} {filter} ORDER BY {order}"))?;
         let cols: Vec<String> = stmt.column_names().map(str::to_owned).collect();
         let mut rows = stmt.query([])?;
         let mut out = Vec::new();
@@ -110,23 +124,92 @@ fn dump(conn: &Connection) -> CoreResult<Payload> {
     Ok(Payload { tables })
 }
 
+/// A backup key derived once from a password, so automatic backups and sync need no prompt.
+/// Files made with it restore with the same password, because the salt is in the header.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct StoredKey {
+    pub salt: String,
+    pub kdf: KdfParams,
+    pub key: String,
+}
+
+impl StoredKey {
+    pub fn derive(password: &str, salt: &[u8], kdf: KdfParams) -> CoreResult<Self> {
+        validate_secret(LockKind::Password, password)
+            .map_err(|_| CoreError::validation("password", "use at least 10 characters"))?;
+        let key = crypto::derive_key(password.as_bytes(), salt, kdf)?;
+        Ok(Self {
+            salt: hex(salt),
+            kdf,
+            key: hex(key.as_ref()),
+        })
+    }
+    pub fn new(password: &str, kdf: KdfParams) -> CoreResult<Self> {
+        let salt: [u8; 16] = crypto::random()?;
+        Self::derive(password, &salt, kdf)
+    }
+    fn key_bytes(&self) -> CoreResult<Zeroizing<[u8; 32]>> {
+        let v = unhex(&self.key).ok_or_else(bad_file)?;
+        let arr: [u8; 32] = v.as_slice().try_into().map_err(|_| bad_file())?;
+        Ok(Zeroizing::new(arr))
+    }
+}
+
+/// Salt and KDF parameters from a backup header (to derive the key on another device).
+pub fn header_params(bytes: &[u8]) -> CoreResult<(Vec<u8>, KdfParams)> {
+    let (header, _, _) = split(bytes)?;
+    Ok((unhex(&header.salt).ok_or_else(bad_file)?, header.kdf))
+}
+
+/// Export with a stored key (no password prompt).
+pub fn export_with_key(conn: &Connection, k: &StoredKey) -> CoreResult<Vec<u8>> {
+    let salt = unhex(&k.salt).ok_or_else(bad_file)?;
+    let key = k.key_bytes()?;
+    seal_payload(conn, &key, &salt, k.kdf)
+}
+
+/// Restore with a stored key. Fails if the file was made with a different password.
+pub fn restore_with_key(
+    conn: &Connection,
+    bytes: &[u8],
+    k: &StoredKey,
+) -> CoreResult<BackupSummary> {
+    let (header, header_json, sealed) = split(bytes)?;
+    let key = k.key_bytes()?;
+    let plain = crypto::open(&key, sealed, header_json).ok_or(CoreError::validation(
+        "password",
+        "is wrong, or the file is damaged",
+    ))?;
+    let payload: Payload = serde_json::from_slice(&plain).map_err(|_| bad_file())?;
+    apply(conn, header, payload)
+}
+
 /// Create an encrypted backup of all data.
 pub fn export(conn: &Connection, password: &str, kdf: KdfParams) -> CoreResult<Vec<u8>> {
     validate_secret(LockKind::Password, password)
         .map_err(|_| CoreError::validation("password", "use at least 10 characters"))?;
     let salt: [u8; 16] = crypto::random()?;
+    let key = crypto::derive_key(password.as_bytes(), &salt, kdf)?;
+    seal_payload(conn, &key, &salt, kdf)
+}
+
+fn seal_payload(
+    conn: &Connection,
+    key: &[u8; 32],
+    salt: &[u8],
+    kdf: KdfParams,
+) -> CoreResult<Vec<u8>> {
     let header = Header {
         format: 1,
         app: "Keel".into(),
         schema_version: SCHEMA_VERSION,
         created_at: now_utc(),
         kdf,
-        salt: hex(&salt),
+        salt: hex(salt),
     };
     let header_json = serde_json::to_vec(&header).map_err(|_| bad_file())?;
     let payload = Zeroizing::new(serde_json::to_vec(&dump(conn)?).map_err(|_| bad_file())?);
-    let key = crypto::derive_key(password.as_bytes(), &salt, kdf)?;
-    let sealed = crypto::seal(&key, &payload, &header_json)?;
+    let sealed = crypto::seal(key, &payload, &header_json)?;
     let mut out = Vec::with_capacity(12 + header_json.len() + sealed.len());
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&(header_json.len() as u32).to_le_bytes());
@@ -135,7 +218,7 @@ pub fn export(conn: &Connection, password: &str, kdf: KdfParams) -> CoreResult<V
     Ok(out)
 }
 
-fn decrypt(bytes: &[u8], password: &str) -> CoreResult<(Header, Payload)> {
+fn split(bytes: &[u8]) -> CoreResult<(Header, &[u8], &[u8])> {
     if bytes.len() > MAX_BACKUP_BYTES || bytes.len() < 12 || &bytes[..8] != MAGIC {
         return Err(bad_file());
     }
@@ -148,11 +231,17 @@ fn decrypt(bytes: &[u8], password: &str) -> CoreResult<(Header, Payload)> {
     if header.format != 1 {
         return Err(bad_file());
     }
+    Ok((header, header_json, &bytes[12 + hlen..]))
+}
+
+fn decrypt(bytes: &[u8], password: &str) -> CoreResult<(Header, Payload)> {
+    let (header, header_json, sealed) = split(bytes)?;
     let salt = unhex(&header.salt).ok_or_else(bad_file)?;
     let key = crypto::derive_key(password.as_bytes(), &salt, header.kdf)?;
-    let plain = crypto::open(&key, &bytes[12 + hlen..], header_json).ok_or(
-        CoreError::validation("password", "is wrong, or the file is damaged"),
-    )?;
+    let plain = crypto::open(&key, sealed, header_json).ok_or(CoreError::validation(
+        "password",
+        "is wrong, or the file is damaged",
+    ))?;
     let payload: Payload = serde_json::from_slice(&plain).map_err(|_| bad_file())?;
     Ok((header, payload))
 }
@@ -177,6 +266,10 @@ fn table_columns(conn: &Connection, table: &str) -> CoreResult<Vec<String>> {
 /// Replace all data with the backup's contents, atomically. On any error nothing changes.
 pub fn restore(conn: &Connection, bytes: &[u8], password: &str) -> CoreResult<BackupSummary> {
     let (header, payload) = decrypt(bytes, password)?;
+    apply(conn, header, payload)
+}
+
+fn apply(conn: &Connection, header: Header, payload: Payload) -> CoreResult<BackupSummary> {
     if header.schema_version > SCHEMA_VERSION {
         return Err(CoreError::SchemaTooNew {
             found: header.schema_version,
@@ -197,11 +290,24 @@ pub fn restore(conn: &Connection, bytes: &[u8], password: &str) -> CoreResult<Ba
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch("PRAGMA defer_foreign_keys = ON;")?;
     for (t, _) in TABLES.iter().rev() {
-        tx.execute(&format!("DELETE FROM {t}"), [])?;
+        let filter = if *t == "settings" {
+            format!("WHERE NOT {LOCAL_SETTINGS}")
+        } else {
+            String::new()
+        };
+        tx.execute(&format!("DELETE FROM {t} {filter}"), [])?;
     }
     for (t, _) in TABLES {
         let allowed = table_columns(&tx, t)?;
         for row in payload.tables.get(*t).map(Vec::as_slice).unwrap_or(&[]) {
+            if *t == "settings"
+                && row
+                    .get("key")
+                    .and_then(Value::as_str)
+                    .is_some_and(is_local_setting)
+            {
+                continue;
+            }
             let mut cols = Vec::with_capacity(row.len());
             let mut vals = Vec::with_capacity(row.len());
             for (k, v) in row {

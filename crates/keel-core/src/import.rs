@@ -244,13 +244,7 @@ pub fn parse_amount(raw: &str, exp: u32, dec: DecimalSep) -> Option<i64> {
                 let c = s[i..].chars().next()?;
                 let count = s.matches(c).count();
                 // A lone separator followed by 1–2 (or the currency's) digits is a decimal point.
-                if count == 1 && !tail.is_empty() && (tail.len() != 3 || exp == 3) {
-                    Some(c)
-                } else if count > 1 {
-                    None
-                } else {
-                    None
-                }
+                (count == 1 && !tail.is_empty() && (tail.len() != 3 || exp == 3)).then_some(c)
             })
         }
     };

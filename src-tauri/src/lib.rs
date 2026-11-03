@@ -113,6 +113,56 @@ async fn open_file<R: Runtime>(app: AppHandle<R>) -> Result<Value, ErrorPayload>
     }
 }
 
+/// Native Android services used by the web view. Only these methods can be called; the Kotlin
+/// side additionally restricts network access to Dropbox and file names to `keel-*`.
+const NATIVE_METHODS: &[&str] = &[
+    "pickFolder",
+    "writeToFolder",
+    "listFolder",
+    "deleteInFolder",
+    "notifyPermission",
+    "scheduleReminders",
+    "showReminder",
+    "openUrl",
+    "takeAuthRedirect",
+    "httpRequest",
+];
+
+#[tauri::command]
+async fn native_call<R: Runtime>(
+    app: AppHandle<R>,
+    method: String,
+    args: Value,
+) -> Result<Value, ErrorPayload> {
+    if !NATIVE_METHODS.contains(&method.as_str()) {
+        return Err(ErrorPayload::from(&CoreError::validation(
+            "method",
+            "not allowed",
+        )));
+    }
+    #[cfg(target_os = "android")]
+    {
+        let h = app.state::<protector::android::NativeHandle<R>>();
+        h.0.run_mobile_plugin::<Value>(&method, args)
+            .map_err(|e| ErrorPayload {
+                code: "native",
+                field: None,
+                message: match e {
+                    tauri::plugin::mobile::PluginInvokeError::InvokeRejected(r) => {
+                        r.message.unwrap_or_else(|| "failed".into())
+                    }
+                    _ => "failed".into(),
+                },
+                retry_after_secs: None,
+            })
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, args);
+        Err(native_unavailable())
+    }
+}
+
 /// Hide content in the app switcher and block screenshots (Android FLAG_SECURE).
 #[tauri::command]
 async fn set_secure<R: Runtime>(app: AppHandle<R>, enabled: bool) -> Result<Value, ErrorPayload> {
@@ -138,7 +188,11 @@ pub fn run() {
     let builder = builder.plugin(protector::android::plugin());
     builder
         .invoke_handler(tauri::generate_handler![
-            core_call, save_file, open_file, set_secure
+            core_call,
+            save_file,
+            open_file,
+            set_secure,
+            native_call
         ])
         .run(tauri::generate_context!())
         .expect("error while running Keel");

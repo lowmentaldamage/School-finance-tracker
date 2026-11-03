@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import { call } from '../../api/client';
 import { useResetAfterSessionChange, useSettings } from '../../api/hooks';
 import type { AppStatus } from '../../api/types';
+import { backgroundLockPaused, runBeforeBackground } from '../../lib/native';
 import { setSecureWindow } from '../../lib/platform';
 
 /**
@@ -43,11 +44,15 @@ export function AutoLock({ status }: { status: AppStatus }) {
     const onVis = () => {
       if (document.visibilityState === 'hidden') {
         hiddenAt.current = Date.now();
-        if (graceSecs === 0) void lockNow();
+        if (backgroundLockPaused()) {
+          hiddenAt.current = null;
+          return;
+        }
+        if (graceSecs === 0) void runBeforeBackground().then(lockNow);
       } else if (hiddenAt.current !== null) {
         const away = (Date.now() - hiddenAt.current) / 1000;
         hiddenAt.current = null;
-        if (away >= graceSecs) void lockNow();
+        if (away >= graceSecs && !backgroundLockPaused()) void lockNow();
         else touch();
       }
     };

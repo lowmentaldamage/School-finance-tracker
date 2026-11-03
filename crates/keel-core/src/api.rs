@@ -202,6 +202,27 @@ pub const COMMANDS: &[&str] = &[
     "goals.delete_contribution",
 ];
 
+/// Whether a command changes data (used to mark the database as changed for sync).
+pub fn is_mutation(cmd: &str) -> bool {
+    const READ_SUFFIXES: &[&str] = &[
+        ".list",
+        ".get",
+        ".all",
+        ".month",
+        ".history",
+        ".upcoming",
+        ".summary",
+        ".cashflow",
+        ".by_category",
+        ".balances",
+        ".net_worth",
+        ".active_months",
+        ".payees",
+        ".contributions",
+    ];
+    COMMANDS.contains(&cmd) && !READ_SUFFIXES.iter().any(|s| cmd.ends_with(s))
+}
+
 pub fn dispatch(conn: &Connection, cmd: &str, a: Value) -> CoreResult<Value> {
     match cmd {
         "settings.all" => ok(settings::all(conn)?),

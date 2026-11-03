@@ -18,7 +18,59 @@ pub const ALLOWED_KEYS: &[&str] = &[
     "security.auto_lock_minutes",
     "security.background_lock_secs",
     "security.hide_in_switcher",
+    "backup.auto.enabled",
+    "backup.auto.folder_uri",
+    "backup.auto.folder_name",
+    "backup.auto.last_at",
+    "notifications.bills",
+    "notifications.budgets",
+    "notifications.budget_sent",
+    "sync.enabled",
+    "sync.last_rev",
+    "sync.last_at",
+    "sync.dirty",
+    "sync.account_name",
 ];
+
+/// Prefix for values that never leave the core through `settings.all` / `settings.set`.
+const SECRET_PREFIX: &str = "secret.";
+
+pub(crate) fn get_secret(conn: &Connection, key: &str) -> CoreResult<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            [format!("{SECRET_PREFIX}{key}")],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+pub(crate) fn set_secret(conn: &Connection, key: &str, value: &str) -> CoreResult<()> {
+    conn.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![format!("{SECRET_PREFIX}{key}"), value, now_utc()],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn delete_secret(conn: &Connection, key: &str) -> CoreResult<()> {
+    conn.execute(
+        "DELETE FROM settings WHERE key = ?1",
+        [format!("{SECRET_PREFIX}{key}")],
+    )?;
+    Ok(())
+}
+
+/// Internal write that skips the allow-list (for state the core manages itself).
+pub(crate) fn set_internal(conn: &Connection, key: &str, value: &Value) -> CoreResult<()> {
+    conn.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![key, value.to_string(), now_utc()],
+    )?;
+    Ok(())
+}
 
 fn check_key(key: &str) -> CoreResult<()> {
     if ALLOWED_KEYS.contains(&key) {
@@ -50,7 +102,7 @@ pub fn set(conn: &Connection, key: &str, value: &Value) -> CoreResult<()> {
 }
 
 pub fn all(conn: &Connection) -> CoreResult<serde_json::Map<String, Value>> {
-    let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
+    let mut stmt = conn.prepare("SELECT key, value FROM settings WHERE key NOT LIKE 'secret.%'")?;
     let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
     let mut map = serde_json::Map::new();
     for row in rows {
@@ -80,6 +132,24 @@ fn validate_value(key: &str, v: &Value) -> CoreResult<()> {
         "onboarding.completed" | "defaults.seeded" | "security.hide_in_switcher" => v.is_boolean(),
         "security.auto_lock_minutes" => matches!(v.as_u64(), Some(1 | 2 | 5 | 10 | 15 | 30 | 60)),
         "security.background_lock_secs" => matches!(v.as_u64(), Some(0 | 30 | 60 | 300)),
+        "backup.auto.enabled"
+        | "notifications.bills"
+        | "notifications.budgets"
+        | "sync.enabled"
+        | "sync.dirty" => v.is_boolean(),
+        "backup.auto.folder_uri" => v
+            .as_str()
+            .is_some_and(|s| s.is_empty() || (s.starts_with("content://") && s.len() <= 1000)),
+        "backup.auto.folder_name" | "sync.account_name" => {
+            v.as_str().is_some_and(|s| s.chars().count() <= 200)
+        }
+        "backup.auto.last_at" | "sync.last_at" => v.as_str().is_some_and(|s| s.len() <= 40),
+        "sync.last_rev" => v
+            .as_str()
+            .is_some_and(|s| s.len() <= 100 && s.chars().all(|c| c.is_ascii_alphanumeric())),
+        "notifications.budget_sent" => v.as_array().is_some_and(|a| {
+            a.len() <= 500 && a.iter().all(|x| x.as_str().is_some_and(|s| s.len() <= 80))
+        }),
         _ => false,
     };
     if ok {

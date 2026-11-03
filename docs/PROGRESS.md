@@ -23,8 +23,8 @@ Target: Android (APK). Windows and iOS are deferred.
 - [x] Savings goals (contributions or linked account)
 - [x] Recurring transactions with due/upcoming lists, record/skip
 - [x] CSV export
-- [ ] System notifications for bills and budgets (in-app reminders exist)
-- [ ] PDF monthly report
+- [x] Reminders: phone notifications for bills (day before) and budgets (80 %/100 %), off by default
+- [x] PDF monthly report
 
 ## Phase 5 — Security and reliability
 - [x] Database key wrapped by the Android Keystore
@@ -32,8 +32,9 @@ Target: Android (APK). Windows and iOS are deferred.
 - [x] Encrypted backup and restore
 - [x] Delete all data
 - [x] Release build without network permission; no Android cloud backup
-- [ ] Automatic scheduled backups
-- [ ] Bank CSV import
+- [x] Automatic weekly encrypted backups to a chosen folder (keeps 5)
+- [x] Bank CSV import with duplicate skipping and learned categories
+- [x] Optional Dropbox sync of one encrypted file (newest wins, conflicts asked)
 
 ## Phase 6 — Packaging
 - [x] Android project, icon, splash, signed release APK built in CI
@@ -43,10 +44,12 @@ Target: Android (APK). Windows and iOS are deferred.
 ## Phase 7 — Product readiness
 - [x] App icon and splash screen
 - [ ] User guide
-- [ ] Release signing key set up by the owner (see README)
+- [x] Release workflow publishing signed APKs to GitHub Releases
+- [ ] Release signing secrets added by the owner
+- [ ] Dropbox app key added by the owner (optional)
 
 ## Test status
-- Rust: 54 tests — money, validation, migrations, encryption at rest, wrong key, key file, app lock, throttling, recovery, biometric wrap, backup round-trip and tampering, CSV, accounts, categories, transactions, reports, budgets, recurring, goals.
+- Rust: 63 tests — money, validation, migrations, encryption at rest, wrong key, key file, app lock, throttling, recovery, biometric wrap, backup round-trip and tampering, device-local settings kept on restore, two-phone sync, automatic backup, bank CSV import, CSV export, accounts, categories, transactions, reports, budgets, recurring, goals.
 - Frontend: 40 tests — amount parsing/formatting, dates, periods, filters, translation coverage.
 - End to end (browser, real core): onboarding, transactions, validation, balances, search, edit/delete, category guard, app lock with wrong PIN, recovery-key unlock, encrypted backup and restore, theme persistence.
 - Android (CI emulator): onboarding, add transaction, balance, Keystore status, lock on background, PIN unlock, back button, data after restart.

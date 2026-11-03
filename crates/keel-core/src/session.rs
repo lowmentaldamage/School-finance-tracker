@@ -14,6 +14,7 @@ use crate::crypto::KdfParams;
 use crate::db::{self, DbKey};
 use crate::error::{CoreError, CoreResult, ErrorPayload};
 use crate::keystore::{self, DeviceProtector, LockInfo, LockKind};
+use crate::repo::settings;
 use crate::{api, backup};
 
 pub struct Session {
@@ -100,6 +101,42 @@ fn decode_b64(s: &str) -> CoreResult<Vec<u8>> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct RemoteArg {
+    data_b64: String,
+    rev: String,
+    #[serde(default)]
+    password: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RevArg {
+    rev: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TokenArg {
+    refresh_token: String,
+    #[serde(default)]
+    account_name: Option<String>,
+}
+
+fn stored_key(conn: &Connection, name: &str) -> CoreResult<backup::StoredKey> {
+    let raw = settings::get_secret(conn, name)?.ok_or(CoreError::Conflict {
+        reason: "not set up",
+    })?;
+    serde_json::from_str(&raw).map_err(|_| CoreError::Conflict {
+        reason: "not set up",
+    })
+}
+
+fn save_key(conn: &Connection, name: &str, k: &backup::StoredKey) -> CoreResult<()> {
+    settings::set_secret(conn, name, &serde_json::to_string(k).unwrap_or_default())
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MonthArg {
     month: String,
 }
@@ -108,6 +145,17 @@ struct MonthArg {
 #[serde(deny_unknown_fields)]
 struct ConfirmArg {
     confirm: String,
+}
+
+/// Remember that local data changed since the last sync (only when sync is on).
+fn mark_dirty(conn: &Connection) -> CoreResult<()> {
+    if settings::get(conn, "sync.enabled")?
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        settings::set_internal(conn, "sync.dirty", &json!(true))?;
+    }
+    Ok(())
 }
 
 fn file_stamp() -> String {
@@ -324,6 +372,7 @@ impl Session {
                     .map_err(|_| CoreError::validation("file", "could not be read"))?;
                 let pw = Zeroizing::new(p.password);
                 let summary = backup::restore(self.conn()?, &bytes, &pw)?;
+                mark_dirty(self.conn()?)?;
                 Ok(serde_json::to_value(summary).unwrap_or(Value::Null))
             }
             "data.export_csv" => {
@@ -342,10 +391,122 @@ impl Session {
             "import.run" => {
                 let p: ImportArg = args(a)?;
                 let bytes = decode_b64(&p.data_b64)?;
+                let r = crate::import::run(self.conn()?, &bytes, &p.mapping)?;
+                mark_dirty(self.conn()?)?;
+                Ok(serde_json::to_value(r).unwrap_or(Value::Null))
+            }
+            // Automatic backups: a key derived once from the backup password is kept in the
+            // encrypted database, so scheduled backups need no prompt.
+            "autobackup.configure" => {
+                let p: PasswordArg = args(a)?;
+                let pw = Zeroizing::new(p.password);
+                let kdf = self.kdf;
+                let conn = self.conn()?;
+                save_key(conn, "backup_key", &backup::StoredKey::new(&pw, kdf)?)?;
+                settings::set(conn, "backup.auto.enabled", &json!(true))?;
+                Ok(json!(null))
+            }
+            "autobackup.create" => {
+                let conn = self.conn()?;
+                let k = stored_key(conn, "backup_key")?;
+                let bytes = backup::export_with_key(conn, &k)?;
+                settings::set(conn, "backup.auto.last_at", &json!(crate::time::now_utc()))?;
                 Ok(
-                    serde_json::to_value(crate::import::run(self.conn()?, &bytes, &p.mapping)?)
-                        .unwrap_or(Value::Null),
+                    json!({ "file_name": format!("keel-auto-{}.keelbak", file_stamp()), "data_b64": B64.encode(bytes) }),
                 )
+            }
+            "autobackup.disable" => {
+                let conn = self.conn()?;
+                settings::delete_secret(conn, "backup_key")?;
+                settings::set(conn, "backup.auto.enabled", &json!(false))?;
+                Ok(json!(null))
+            }
+
+            // Sync: one encrypted file in the user's cloud folder. The transport (Dropbox) runs
+            // in the app; the core only seals/opens the file and tracks what changed.
+            "sync.setup_new" => {
+                let p: PasswordArg = args(a)?;
+                let pw = Zeroizing::new(p.password);
+                let kdf = self.kdf;
+                let conn = self.conn()?;
+                save_key(conn, "sync_key", &backup::StoredKey::new(&pw, kdf)?)?;
+                settings::set(conn, "sync.enabled", &json!(true))?;
+                settings::set(conn, "sync.dirty", &json!(true))?;
+                Ok(json!(null))
+            }
+            "sync.setup_from_remote" => {
+                let p: RemoteArg = args(a)?;
+                let bytes = decode_b64(&p.data_b64)?;
+                let pw = Zeroizing::new(p.password.unwrap_or_default());
+                let (salt, kdf) = backup::header_params(&bytes)?;
+                let k = backup::StoredKey::derive(&pw, &salt, kdf)?;
+                let conn = self.conn()?;
+                let summary = backup::restore_with_key(conn, &bytes, &k)?;
+                save_key(conn, "sync_key", &k)?;
+                settings::set(conn, "sync.enabled", &json!(true))?;
+                settings::set(conn, "sync.last_rev", &json!(p.rev))?;
+                settings::set(conn, "sync.dirty", &json!(false))?;
+                settings::set(conn, "sync.last_at", &json!(crate::time::now_utc()))?;
+                Ok(serde_json::to_value(summary).unwrap_or(Value::Null))
+            }
+            "sync.export" => {
+                let conn = self.conn()?;
+                let k = stored_key(conn, "sync_key")?;
+                Ok(json!({ "data_b64": B64.encode(backup::export_with_key(conn, &k)?) }))
+            }
+            "sync.import" => {
+                let p: RemoteArg = args(a)?;
+                let bytes = decode_b64(&p.data_b64)?;
+                let conn = self.conn()?;
+                let k = stored_key(conn, "sync_key")?;
+                let summary = backup::restore_with_key(conn, &bytes, &k)?;
+                settings::set(conn, "sync.last_rev", &json!(p.rev))?;
+                settings::set(conn, "sync.dirty", &json!(false))?;
+                settings::set(conn, "sync.last_at", &json!(crate::time::now_utc()))?;
+                Ok(serde_json::to_value(summary).unwrap_or(Value::Null))
+            }
+            "sync.mark_uploaded" => {
+                let p: RevArg = args(a)?;
+                let conn = self.conn()?;
+                settings::set(conn, "sync.last_rev", &json!(p.rev))?;
+                settings::set(conn, "sync.dirty", &json!(false))?;
+                settings::set(conn, "sync.last_at", &json!(crate::time::now_utc()))?;
+                Ok(json!(null))
+            }
+            "sync.set_token" => {
+                let p: TokenArg = args(a)?;
+                if p.refresh_token.is_empty() || p.refresh_token.len() > 2000 {
+                    return Err(CoreError::validation("refresh_token", "invalid"));
+                }
+                let conn = self.conn()?;
+                settings::set_secret(conn, "dropbox_refresh_token", &p.refresh_token)?;
+                if let Some(n) = p.account_name {
+                    settings::set(
+                        conn,
+                        "sync.account_name",
+                        &json!(n.chars().take(200).collect::<String>()),
+                    )?;
+                }
+                Ok(json!(null))
+            }
+            "sync.get_token" => {
+                let conn = self.conn()?;
+                Ok(json!({ "refresh_token": settings::get_secret(conn, "dropbox_refresh_token")? }))
+            }
+            "sync.has_key" => {
+                let conn = self.conn()?;
+                Ok(json!({ "has_key": settings::get_secret(conn, "sync_key")?.is_some() }))
+            }
+            "sync.disconnect" => {
+                let conn = self.conn()?;
+                settings::delete_secret(conn, "dropbox_refresh_token")?;
+                settings::delete_secret(conn, "sync_key")?;
+                for k in ["sync.enabled", "sync.dirty"] {
+                    settings::set(conn, k, &json!(false))?;
+                }
+                settings::set(conn, "sync.last_rev", &json!(""))?;
+                settings::set(conn, "sync.account_name", &json!(""))?;
+                Ok(json!(null))
             }
             "report.monthly_pdf" => {
                 let p: MonthArg = args(a)?;
@@ -368,7 +529,11 @@ impl Session {
             }
             _ => {
                 let conn = self.conn()?;
-                api::dispatch(conn, cmd, a)
+                let out = api::dispatch(conn, cmd, a)?;
+                if api::is_mutation(cmd) {
+                    mark_dirty(conn)?;
+                }
+                Ok(out)
             }
         }
     }
@@ -527,6 +692,117 @@ mod tests {
                 json!({"data_b64": B64.encode(raw), "password": "backup password 1"})
             )
             .is_err());
+    }
+
+    #[test]
+    fn sync_between_two_devices() {
+        let d1 = tempfile::tempdir().unwrap();
+        let d2 = tempfile::tempdir().unwrap();
+        let mut a = session(d1.path());
+        let mut b = session(d2.path());
+        create_account(&mut a, "Main");
+        a.call("sync.setup_new", json!({"password": "sync password 1"}))
+            .unwrap();
+        a.call("sync.set_token", json!({"refresh_token": "tok"}))
+            .unwrap();
+        // Secrets never appear in settings.all.
+        let all = a.call("settings.all", json!({})).unwrap();
+        assert!(all
+            .as_object()
+            .unwrap()
+            .keys()
+            .all(|k| !k.starts_with("secret.")));
+        let up = a.call("sync.export", json!({})).unwrap()["data_b64"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        a.call("sync.mark_uploaded", json!({"rev": "rev1"}))
+            .unwrap();
+        assert_eq!(
+            a.call("settings.all", json!({})).unwrap()["sync.dirty"],
+            false
+        );
+
+        // Second phone: wrong password fails and changes nothing; right one restores.
+        create_account(&mut b, "Other");
+        assert!(b
+            .call(
+                "sync.setup_from_remote",
+                json!({"data_b64": up, "rev": "rev1", "password": "wrong password 1"})
+            )
+            .is_err());
+        b.call(
+            "sync.setup_from_remote",
+            json!({"data_b64": up, "rev": "rev1", "password": "sync password 1"}),
+        )
+        .unwrap();
+        let accs = b.call("accounts.list", json!({})).unwrap();
+        assert_eq!(accs[0]["name"], "Main");
+        let sb = b.call("settings.all", json!({})).unwrap();
+        assert_eq!(sb["sync.enabled"], true);
+        assert_eq!(sb["sync.last_rev"], "rev1");
+        assert_eq!(
+            b.call("sync.get_token", json!({})).unwrap()["refresh_token"],
+            Value::Null,
+            "tokens are not copied"
+        );
+
+        // A change on phone B marks it dirty; A imports B's upload.
+        create_account(&mut b, "Cash");
+        assert_eq!(
+            b.call("settings.all", json!({})).unwrap()["sync.dirty"],
+            true
+        );
+        let up2 = b.call("sync.export", json!({})).unwrap()["data_b64"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        a.call("sync.import", json!({"data_b64": up2, "rev": "rev2"}))
+            .unwrap();
+        assert_eq!(
+            a.call("accounts.list", json!({}))
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            a.call("sync.get_token", json!({})).unwrap()["refresh_token"],
+            "tok",
+            "local token kept"
+        );
+
+        a.call("sync.disconnect", json!({})).unwrap();
+        assert!(a.call("sync.export", json!({})).is_err());
+    }
+
+    #[test]
+    fn automatic_backup_restores_with_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = session(dir.path());
+        create_account(&mut s, "Main");
+        assert!(
+            s.call("autobackup.create", json!({})).is_err(),
+            "needs configuring first"
+        );
+        s.call(
+            "autobackup.configure",
+            json!({"password": "auto backup pw"}),
+        )
+        .unwrap();
+        let f = s.call("autobackup.create", json!({})).unwrap();
+        assert!(f["file_name"].as_str().unwrap().starts_with("keel-auto-"));
+        let data = f["data_b64"].as_str().unwrap().to_owned();
+        let dir2 = tempfile::tempdir().unwrap();
+        let mut t = session(dir2.path());
+        let r = t
+            .call(
+                "backup.restore",
+                json!({"data_b64": data, "password": "auto backup pw"}),
+            )
+            .unwrap();
+        assert_eq!(r["accounts"], 1);
     }
 
     #[test]

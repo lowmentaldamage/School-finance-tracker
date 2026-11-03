@@ -1784,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "keel"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "keel-core",
@@ -1798,7 +1798,7 @@ dependencies = [
 
 [[package]]
 name = "keel-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "base64 0.22.1",
@@ -1816,7 +1816,7 @@ dependencies = [
 
 [[package]]
 name = "keel-devserver"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "keel-core",
  "serde_json",

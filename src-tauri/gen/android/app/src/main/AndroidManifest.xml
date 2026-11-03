@@ -2,9 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Needed only by debug builds to reach the development server; removed from release builds
-         (see src/release/AndroidManifest.xml). Keel itself makes no network requests. -->
+    <!-- Used only for optional Dropbox sync (and the development server in debug builds).
+         Release builds without a Dropbox key remove it (src/offline/AndroidManifest.xml). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Local reminders (off until the user turns them on) and re-scheduling them after a reboot. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:icon="@mipmap/ic_launcher"
@@ -28,7 +31,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Dropbox sign-in returns here (db-<app key>://auth). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="db-${dropboxAppKey}" android:host="auth" />
+            </intent-filter>
         </activity>
+
+        <receiver android:name=".NotifyReceiver" android:exported="false" />
+        <receiver android:name=".BootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <provider
           android:name="androidx.core.content.FileProvider"

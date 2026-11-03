@@ -140,6 +140,18 @@ export interface Settings {
   'security.auto_lock_minutes'?: number;
   'security.background_lock_secs'?: number;
   'security.hide_in_switcher'?: boolean;
+  'backup.auto.enabled'?: boolean;
+  'backup.auto.folder_uri'?: string;
+  'backup.auto.folder_name'?: string;
+  'backup.auto.last_at'?: string;
+  'notifications.bills'?: boolean;
+  'notifications.budgets'?: boolean;
+  'notifications.budget_sent'?: string[];
+  'sync.enabled'?: boolean;
+  'sync.last_rev'?: string;
+  'sync.last_at'?: string;
+  'sync.dirty'?: boolean;
+  'sync.account_name'?: string;
 }
 
 export type KeyProtection = 'android-keystore' | 'plain';

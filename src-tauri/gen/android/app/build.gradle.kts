@@ -16,6 +16,9 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// Dropbox sync is compiled in only when a Dropbox app key is provided at build time.
+val dropboxAppKey: String = (System.getenv("DROPBOX_APP_KEY") ?: "").ifBlank { "none" }
+
 val tauriProperties = Properties().apply {
     val propFile = file("tauri.properties")
     if (propFile.exists()) {
@@ -28,6 +31,7 @@ android {
     namespace = "com.keel.finance"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
+        manifestPlaceholders["dropboxAppKey"] = dropboxAppKey
         applicationId = "com.keel.finance"
         minSdk = 26
         targetSdk = 37
@@ -72,6 +76,12 @@ android {
             )
         }
     }
+    sourceSets {
+        // Without Dropbox, release builds drop the INTERNET permission entirely.
+        if (dropboxAppKey == "none") {
+            getByName("release").manifest.srcFile("src/offline/AndroidManifest.xml")
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
@@ -98,6 +108,7 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")

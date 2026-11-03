@@ -12,6 +12,9 @@ import { GoalsPage } from '../features/goals/GoalsPage';
 import { RecurringPage } from '../features/recurring/RecurringPage';
 import { CategoriesPage } from '../features/categories/CategoriesPage';
 import { AutoLock } from '../features/lock/AutoLock';
+import { ReminderScheduler } from '../features/reminders/ReminderScheduler';
+import { AutoBackupRunner } from '../features/settings/AutoBackupRunner';
+import { SyncRunner } from '../features/sync/SyncRunner';
 import { LockScreen } from '../features/lock/LockScreen';
 import { Onboarding } from '../features/onboarding/Onboarding';
 import { SettingsPage } from '../features/settings/SettingsPage';
@@ -96,6 +99,9 @@ function Gate() {
   return (
     <>
       <AutoLock status={status.data!} />
+      <ReminderScheduler />
+      <AutoBackupRunner />
+      <SyncRunner />
       <RouterProvider router={router} />
     </>
   );

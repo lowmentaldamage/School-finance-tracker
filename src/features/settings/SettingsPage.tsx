@@ -7,6 +7,8 @@ import { Button, Input, Page, PageHeader, Panel, Segmented, Select, useToast } f
 import { humanize } from '../../lib/errors';
 import { defaultLocale, formatMoney } from '../../lib/money';
 import { DataPanel } from './DataPanel';
+import { RemindersPanel } from './RemindersPanel';
+import { SyncPanel } from '../sync/SyncPanel';
 import { RatesPanel } from './RatesPanel';
 import { SecurityPanel } from './SecurityPanel';
 
@@ -117,6 +119,10 @@ export function SettingsPage() {
         <RatesPanel />
 
         <SecurityPanel />
+
+        <RemindersPanel />
+
+        <SyncPanel />
 
         <DataPanel />
 

@@ -93,7 +93,7 @@ pub fn money(minor: i64, currency: &str, exp: u32) -> String {
     let int = (abs / div).to_string();
     let mut grouped = String::new();
     for (i, ch) in int.chars().enumerate() {
-        if i > 0 && (int.len() - i) % 3 == 0 {
+        if i > 0 && (int.len() - i).is_multiple_of(3) {
             grouped.push(',');
         }
         grouped.push(ch);

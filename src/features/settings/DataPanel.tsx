@@ -9,6 +9,7 @@ import { Button, Dialog, Field, Input, Panel, useToast } from '../../components/
 import { fieldError, humanize } from '../../lib/errors';
 import { pickFile, saveFile } from '../../lib/platform';
 import { monthKey, shiftMonth, formatMonth } from '../../lib/period';
+import { AutoBackupSection } from './AutoBackupSection';
 import { ImportDialog } from './ImportDialog';
 import { Select } from '../../components/ui';
 
@@ -62,6 +63,7 @@ export function DataPanel() {
         <Row label={t('data.backup')} hint={t('data.backup_hint')}>
           <Button onClick={() => setDlg('backup')}>{t('data.create_backup')}</Button>
         </Row>
+        <AutoBackupSection Row={Row} />
         <Row label={t('data.restore')} hint={t('data.restore_hint')}>
           <Button onClick={() => setDlg('restore')}>{t('data.restore_backup')}</Button>
         </Row>
