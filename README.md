@@ -26,7 +26,7 @@ Before cloning and building **Keel**, ensure your system has the following tools
 Clone the repository and enter the project directory:
 
 ```bash
-git clone [https://github.com/your-username/keel.git](https://github.com/your-username/keel.git)
+git clone [https://github.com/lowmentaldamage/school-tracker](https://github.com/lowmentaldamage/school-tracker)
 cd keel
 
 Install the JavaScript dependencies:
