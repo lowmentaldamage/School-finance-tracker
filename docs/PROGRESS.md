@@ -35,6 +35,7 @@ Target: Android (APK). Windows and iOS are deferred.
 - [x] Automatic weekly encrypted backups to a chosen folder (keeps 5)
 - [x] Bank CSV import with duplicate skipping and learned categories
 - [x] Optional Dropbox sync of one encrypted file (newest wins, conflicts asked)
+- [x] Bank notifications: reads payment notifications from chosen bank apps, review inbox or automatic adding
 
 ## Phase 6 — Packaging
 - [x] Android project, icon, splash, signed release APK built in CI
@@ -49,7 +50,7 @@ Target: Android (APK). Windows and iOS are deferred.
 - [ ] Dropbox app key added by the owner (optional)
 
 ## Test status
-- Rust: 63 tests — money, validation, migrations, encryption at rest, wrong key, key file, app lock, throttling, recovery, biometric wrap, backup round-trip and tampering, device-local settings kept on restore, two-phone sync, automatic backup, bank CSV import, CSV export, accounts, categories, transactions, reports, budgets, recurring, goals.
+- Rust: 67 tests — money, validation, migrations, encryption at rest, wrong key, key file, app lock, throttling, recovery, biometric wrap, backup round-trip and tampering, device-local settings kept on restore, two-phone sync, automatic backup, bank CSV import, bank notification parsing (10 message formats, non-payment messages ignored), notification inbox, automatic adding and duplicates, CSV export, accounts, categories, transactions, reports, budgets, recurring, goals.
 - Frontend: 40 tests — amount parsing/formatting, dates, periods, filters, translation coverage.
-- End to end (browser, real core): onboarding, transactions, validation, balances, search, edit/delete, category guard, app lock with wrong PIN, recovery-key unlock, encrypted backup and restore, theme persistence.
+- End to end (browser, real core): onboarding, transactions, validation, balances, search, edit/delete, category guard, app lock with wrong PIN, recovery-key unlock, encrypted backup and restore, theme persistence, bank notification inbox (add and dismiss).
 - Android (CI emulator): onboarding, add transaction, balance, Keystore status, lock on background, PIN unlock, back button, data after restart.

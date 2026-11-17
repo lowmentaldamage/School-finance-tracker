@@ -95,6 +95,18 @@ class HttpArgs {
 }
 
 @InvokeArg
+class CaptureArgs {
+    var enabled: Boolean = false
+    /** JSON array of package names. */
+    var packages: String = "[]"
+}
+
+@InvokeArg
+class AckArgs {
+    var lines: Int = 0
+}
+
+@InvokeArg
 class UrlArgs {
     var url: String = ""
 }
@@ -478,6 +490,80 @@ class KeelPlugin(private val activity: Activity) : Plugin(activity) {
     fun showReminder(invoke: Invoke) {
         val a = invoke.parseArgs(ReminderArgs::class.java)
         Reminders.show(activity, a.id, a.title, a.body)
+        invoke.resolve()
+    }
+
+    // ---- Bank notifications ----
+
+    @Command
+    fun captureStatus(invoke: Invoke) {
+        invoke.resolve(
+            obj(
+                "access" to BankCapture.hasAccess(activity),
+                "enabled" to BankCapture.enabled(activity),
+                "seen" to BankCapture.seen(activity).toString(),
+            )
+        )
+    }
+
+    @Command
+    fun captureOpenAccess(invoke: Invoke) {
+        try {
+            val detail = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
+                    android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                    BankCapture.component(activity).flattenToString()
+                )
+            } else null
+            try {
+                activity.startActivity(detail ?: throw IllegalStateException())
+            } catch (e: Exception) {
+                activity.startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }
+            invoke.resolve()
+        } catch (e: Exception) {
+            invoke.reject("could not open settings")
+        }
+    }
+
+    /** App info page, where sideloaded apps get "Allow restricted settings" (Android 13+). */
+    @Command
+    fun openAppInfo(invoke: Invoke) {
+        try {
+            activity.startActivity(
+                Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + activity.packageName))
+            )
+            invoke.resolve()
+        } catch (e: Exception) {
+            invoke.reject("could not open settings")
+        }
+    }
+
+    @Command
+    fun captureConfigure(invoke: Invoke) {
+        try {
+            val a = invoke.parseArgs(CaptureArgs::class.java)
+            val arr = JSONArray(a.packages)
+            BankCapture.configure(activity, a.enabled, (0 until arr.length()).map { arr.getString(it) })
+            invoke.resolve()
+        } catch (e: Exception) {
+            invoke.reject("could not save")
+        }
+    }
+
+    @Command
+    fun captureDrain(invoke: Invoke) {
+        try {
+            val (items, lines) = BankCapture.peek(activity)
+            invoke.resolve(obj("items" to items.toString(), "lines" to lines))
+        } catch (e: Exception) {
+            invoke.reject("could not read captured notifications")
+        }
+    }
+
+    @Command
+    fun captureAck(invoke: Invoke) {
+        BankCapture.ack(activity, invoke.parseArgs(AckArgs::class.java).lines)
         invoke.resolve()
     }
 

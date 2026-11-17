@@ -41,6 +41,11 @@ Keel is a local-first, privacy-focused personal finance tracker for Android. Win
 
 ## 4. Features
 
+> Added 2026-11-17: **Bank notifications** (Android). With the user's permission, Keel reads
+> notifications from the bank apps they pick, parses amount, direction, currency and merchant, and
+> puts them in a review inbox, or adds them automatically to a chosen account. Notification text is
+> queued encrypted (Android Keystore) until Keel is unlocked, then stored in the encrypted database.
+
 ### 4.1 Dashboard
 - Total balance (net worth in EUR), total income, total expenses, net savings, savings rate.
 - Income vs. expenses chart, expense breakdown by category, spending trend.

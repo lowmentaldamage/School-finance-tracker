@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useAccounts, useCategories, usePayees, useSaveTransaction, useDeleteTransactions } from '../../api/hooks';
+import { useAccounts, useCategories, useConfirmCapture, usePayees, useSaveTransaction, useDeleteTransactions } from '../../api/hooks';
 import type { PaymentMethod, Transaction, TxType } from '../../api/types';
 import { Button, ConfirmDialog, Dialog, Field, Icon, Input, Segmented, Select, Textarea, useToast } from '../../components/ui';
 import { todayISO } from '../../lib/dates';
@@ -28,6 +28,14 @@ type Errors = Partial<Record<FieldName, string>>;
 export interface TransactionDraft {
   type?: TxType;
   account_id?: string;
+  amount_minor?: number;
+  currency?: string;
+  date?: string;
+  payee?: string;
+  category_id?: string;
+  payment_method?: PaymentMethod;
+  /** Set when adding a captured bank notification; saving marks it handled. */
+  capture_id?: string;
 }
 
 export function TransactionForm({
@@ -46,6 +54,7 @@ export function TransactionForm({
   const accounts = useAccounts(true);
   const categories = useCategories(true);
   const save = useSaveTransaction();
+  const confirmCapture = useConfirmCapture();
   const del = useDeleteTransactions();
 
   const [type, setType] = useState<TxType>('expense');
@@ -97,16 +106,20 @@ export function TransactionForm({
       setTags(transaction.tags);
       setNotes(transaction.notes ?? '');
     } else {
+      const draftAccount =
+        activeAccounts.find((a) => a.id === draft?.account_id && !a.archived) ??
+        (draft?.currency ? activeAccounts.find((a) => !a.archived && a.currency === draft.currency) : undefined) ??
+        firstAccount;
       setType(draft?.type ?? 'expense');
-      setAmount('');
-      setAccountId(draft?.account_id ?? firstAccount?.id ?? '');
+      setAmount(draft?.amount_minor ? minorToInput(draft.amount_minor, currencyExponent(draft.currency ?? draftAccount?.currency ?? 'EUR')) : '');
+      setAccountId(draftAccount?.id ?? '');
       setToAccountId('');
       setToAmount('');
-      setDate(todayISO());
-      setCategoryId('');
-      setPayee('');
+      setDate(draft?.date ?? todayISO());
+      setCategoryId(draft?.category_id ?? '');
+      setPayee(draft?.payee ?? '');
       setDescription('');
-      setPaymentMethod('');
+      setPaymentMethod(draft?.payment_method ?? '');
       setTags([]);
       setNotes('');
     }
@@ -151,9 +164,7 @@ export function TransactionForm({
     if (Object.keys(errs).length) return;
 
     try {
-      await save.mutateAsync({
-        ...(transaction ? { id: transaction.id } : {}),
-        input: {
+      const input = {
           type,
           account_id: accountId,
           amount_minor: amountMinor!,
@@ -166,8 +177,9 @@ export function TransactionForm({
           notes: notes.trim() || null,
           payment_method: paymentMethod || null,
           tags: pendingTags,
-        },
-      });
+        };
+      if (draft?.capture_id && !transaction) await confirmCapture.mutateAsync({ id: draft.capture_id, input });
+      else await save.mutateAsync({ ...(transaction ? { id: transaction.id } : {}), input });
       toast(transaction ? t('transactions.updated') : t('transactions.added'));
       onOpenChange(false);
     } catch (err) {
@@ -210,7 +222,7 @@ export function TransactionForm({
                 </Button>
               )}
               <Button onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
-              <Button variant="primary" type="submit" form="tx-form" loading={save.isPending}>
+              <Button variant="primary" type="submit" form="tx-form" loading={save.isPending || confirmCapture.isPending}>
                 {transaction ? t('common.save') : t('transactions.add_short')}
               </Button>
             </>

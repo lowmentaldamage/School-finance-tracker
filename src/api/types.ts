@@ -152,6 +152,42 @@ export interface Settings {
   'sync.last_at'?: string;
   'sync.dirty'?: boolean;
   'sync.account_name'?: string;
+  'capture.enabled'?: boolean;
+  'capture.apps'?: CaptureApp[];
+}
+
+/** A bank app whose notifications Keel reads. */
+export interface CaptureApp {
+  package: string;
+  label: string;
+  account_id: string | null;
+  auto_add: boolean;
+}
+
+/** A bank notification waiting to be added. */
+export interface Capture {
+  id: string;
+  source_package: string;
+  source_app: string;
+  title: string;
+  body: string;
+  posted_at: string;
+  date: string;
+  type: 'income' | 'expense' | null;
+  amount_minor: number | null;
+  currency: string | null;
+  payee: string | null;
+  category_id: string | null;
+  account_id: string | null;
+  status: 'pending' | 'added' | 'dismissed';
+  transaction_id: string | null;
+}
+
+export interface CaptureIngestResult {
+  pending: number;
+  added: number;
+  duplicates: number;
+  ignored: number;
 }
 
 export type KeyProtection = 'android-keystore' | 'plain';

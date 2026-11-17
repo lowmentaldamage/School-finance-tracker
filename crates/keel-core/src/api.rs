@@ -147,6 +147,19 @@ struct GoalStatusArg {
     status: goals::GoalStatus,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IngestArg {
+    items: Vec<crate::capture::Incoming>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConfirmCaptureArg {
+    id: String,
+    input: transactions::TransactionInput,
+}
+
 /// Names of all commands, for documentation and tests.
 pub const COMMANDS: &[&str] = &[
     "settings.all",
@@ -200,6 +213,12 @@ pub const COMMANDS: &[&str] = &[
     "goals.contributions",
     "goals.contribute",
     "goals.delete_contribution",
+    "captures.ingest",
+    "captures.list",
+    "captures.count",
+    "captures.confirm",
+    "captures.dismiss",
+    "captures.config",
 ];
 
 /// Whether a command changes data (used to mark the database as changed for sync).
@@ -219,6 +238,8 @@ pub fn is_mutation(cmd: &str) -> bool {
         ".active_months",
         ".payees",
         ".contributions",
+        ".count",
+        ".config",
     ];
     COMMANDS.contains(&cmd) && !READ_SUFFIXES.iter().any(|s| cmd.ends_with(s))
 }
@@ -372,6 +393,16 @@ pub fn dispatch(conn: &Connection, cmd: &str, a: Value) -> CoreResult<Value> {
         "goals.contributions" => ok(goals::contributions(conn, &args::<IdArg>(a)?.id)?),
         "goals.contribute" => ok(goals::contribute(conn, &args::<CreateArg<_>>(a)?.input)?),
         "goals.delete_contribution" => ok(goals::delete_contribution(conn, &args::<IdArg>(a)?.id)?),
+
+        "captures.ingest" => ok(crate::capture::ingest(conn, &args::<IngestArg>(a)?.items)?),
+        "captures.list" => ok(crate::capture::pending(conn)?),
+        "captures.count" => ok(json!({ "pending": crate::capture::pending_count(conn)? })),
+        "captures.confirm" => {
+            let p: ConfirmCaptureArg = args(a)?;
+            ok(crate::capture::confirm(conn, &p.id, &p.input)?)
+        }
+        "captures.dismiss" => ok(crate::capture::dismiss(conn, &args::<IdsArg>(a)?.ids)?),
+        "captures.config" => ok(crate::capture::packages(conn)?),
 
         _ => Err(CoreError::validation("cmd", "unknown command")),
     }

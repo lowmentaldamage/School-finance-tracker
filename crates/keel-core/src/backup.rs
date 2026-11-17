@@ -46,6 +46,7 @@ const TABLES: &[(&str, &str)] = &[
     ("budget_limits", "id"),
     ("savings_goals", "id"),
     ("goal_contributions", "id"),
+    ("captures", "id"),
 ];
 
 #[derive(Serialize, Deserialize)]
@@ -276,7 +277,8 @@ fn apply(conn: &Connection, header: Header, payload: Payload) -> CoreResult<Back
             supported: SCHEMA_VERSION,
         });
     }
-    if header.schema_version != SCHEMA_VERSION {
+    // Older files restore too: tables added since then simply start empty.
+    if header.schema_version < 1 {
         return Err(CoreError::validation(
             "file",
             "was made by an older Keel version that cannot be restored here",

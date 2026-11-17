@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tansta
 import { appStatus, call } from './client';
 import type {
   Balances,
+  Capture,
   BudgetHistoryPoint,
   BudgetInput,
   BudgetMonth,
@@ -45,7 +46,7 @@ export const keys = {
 };
 
 /** Anything that changes balances or transaction lists invalidates these. */
-const DATA_ROOTS = ['accounts', 'categories', 'tags', 'transactions', 'payees', 'reports', 'budgets', 'recurring', 'goals', 'rates'];
+const DATA_ROOTS = ['captures', 'accounts', 'categories', 'tags', 'transactions', 'payees', 'reports', 'budgets', 'recurring', 'goals', 'rates'];
 
 /**
  * Returns an onSuccess handler that marks data stale. It does not wait for the refetch,
@@ -372,4 +373,26 @@ export function useSessionCall<A extends Record<string, unknown>, R = unknown>(c
 export function useInvalidateAll() {
   const qc = useQueryClient();
   return () => qc.invalidateQueries();
+}
+
+// ---- Bank notifications ----
+
+export function useCaptures(enabled = true) {
+  return useQuery({ queryKey: ['captures', 'pending'], queryFn: () => call<Capture[]>('captures.list'), enabled });
+}
+
+export function useDismissCaptures() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => call<number>('captures.dismiss', { ids }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['captures'] }),
+  });
+}
+
+export function useConfirmCapture() {
+  const invalidate = useInvalidateData();
+  return useMutation({
+    mutationFn: (p: { id: string; input: TransactionInput }) => call<Transaction>('captures.confirm', p),
+    onSuccess: invalidate,
+  });
 }

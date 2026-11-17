@@ -15,6 +15,7 @@ import { AutoLock } from '../features/lock/AutoLock';
 import { ReminderScheduler } from '../features/reminders/ReminderScheduler';
 import { AutoBackupRunner } from '../features/settings/AutoBackupRunner';
 import { SyncRunner } from '../features/sync/SyncRunner';
+import { CaptureRunner } from '../features/capture/CaptureRunner';
 import { LockScreen } from '../features/lock/LockScreen';
 import { Onboarding } from '../features/onboarding/Onboarding';
 import { SettingsPage } from '../features/settings/SettingsPage';
@@ -102,6 +103,7 @@ function Gate() {
       <ReminderScheduler />
       <AutoBackupRunner />
       <SyncRunner />
+      <CaptureRunner />
       <RouterProvider router={router} />
     </>
   );

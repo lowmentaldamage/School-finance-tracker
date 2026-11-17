@@ -27,7 +27,10 @@ impl Drop for DbKey {
 }
 
 /// Ordered list of embedded migrations. Never edit an existing entry; append new ones.
-const MIGRATIONS: &[(i64, &str)] = &[(1, include_str!("migrations/0001_init.sql"))];
+const MIGRATIONS: &[(i64, &str)] = &[
+    (1, include_str!("migrations/0001_init.sql")),
+    (2, include_str!("migrations/0002_captures.sql")),
+];
 
 pub const SCHEMA_VERSION: i64 = MIGRATIONS[MIGRATIONS.len() - 1].0;
 

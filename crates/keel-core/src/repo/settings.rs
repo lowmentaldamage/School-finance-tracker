@@ -30,6 +30,8 @@ pub const ALLOWED_KEYS: &[&str] = &[
     "sync.last_at",
     "sync.dirty",
     "sync.account_name",
+    "capture.enabled",
+    "capture.apps",
 ];
 
 /// Prefix for values that never leave the core through `settings.all` / `settings.set`.
@@ -147,6 +149,10 @@ fn validate_value(key: &str, v: &Value) -> CoreResult<()> {
         "sync.last_rev" => v
             .as_str()
             .is_some_and(|s| s.len() <= 100 && s.chars().all(|c| c.is_ascii_alphanumeric())),
+        "capture.enabled" => v.is_boolean(),
+        "capture.apps" => v
+            .as_array()
+            .is_some_and(|a| a.len() <= 30 && a.iter().all(valid_capture_app)),
         "notifications.budget_sent" => v.as_array().is_some_and(|a| {
             a.len() <= 500 && a.iter().all(|x| x.as_str().is_some_and(|s| s.len() <= 80))
         }),
@@ -160,6 +166,26 @@ fn validate_value(key: &str, v: &Value) -> CoreResult<()> {
             "invalid value for this setting",
         ))
     }
+}
+
+/// `{package, label, account_id, auto_add}`: a bank app whose notifications Keel reads.
+fn valid_capture_app(v: &Value) -> bool {
+    let Some(o) = v.as_object() else {
+        return false;
+    };
+    o.keys()
+        .all(|k| matches!(k.as_str(), "package" | "label" | "account_id" | "auto_add"))
+        && o.get("package").and_then(Value::as_str).is_some_and(|s| {
+            (1..=200).contains(&s.len())
+                && s.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+        })
+        && o.get("label")
+            .and_then(Value::as_str)
+            .is_some_and(|s| s.chars().count() <= 120)
+        && o.get("account_id")
+            .is_none_or(|a| a.is_null() || a.as_str().is_some_and(crate::ids::is_valid_id))
+        && o.get("auto_add").is_none_or(Value::is_boolean)
 }
 
 pub fn base_currency(conn: &Connection) -> CoreResult<String> {

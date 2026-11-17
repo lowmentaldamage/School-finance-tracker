@@ -29,6 +29,7 @@ import { FilterDialog } from './FilterDialog';
 import { activeFilterCount, DEFAULT_FILTERS, fromSearchParams, toApiFilter, toSearchParams, type FilterState } from './filters';
 import { useQuickAdd } from './QuickAdd';
 import { TransactionForm } from './TransactionForm';
+import { CaptureInbox } from '../capture/CaptureInbox';
 
 const PAGE_SIZE = 50;
 
@@ -154,6 +155,7 @@ export function TransactionsPage() {
       />
 
       <div className="flex flex-col gap-3 px-4 md:px-8">
+        <CaptureInbox />
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-0 flex-1 basis-56">
             <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />

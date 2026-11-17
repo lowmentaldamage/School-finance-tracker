@@ -8,6 +8,7 @@ import { humanize } from '../../lib/errors';
 import { defaultLocale, formatMoney } from '../../lib/money';
 import { DataPanel } from './DataPanel';
 import { RemindersPanel } from './RemindersPanel';
+import { CapturePanel } from '../capture/CapturePanel';
 import { SyncPanel } from '../sync/SyncPanel';
 import { RatesPanel } from './RatesPanel';
 import { SecurityPanel } from './SecurityPanel';
@@ -121,6 +122,8 @@ export function SettingsPage() {
         <SecurityPanel />
 
         <RemindersPanel />
+
+        <CapturePanel />
 
         <SyncPanel />
 

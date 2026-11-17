@@ -128,6 +128,41 @@ async function main() {
   await page.getByText('2 transactions use this category').waitFor();
   await page.keyboard.press('Escape');
 
+  // Bank notifications captured on the phone: review inbox, add one, dismiss one.
+  const posted = Date.now();
+  const ingest = await fetch(BRIDGE, {
+    method: 'POST',
+    body: JSON.stringify({
+      cmd: 'captures.ingest',
+      args: {
+        items: [
+          { key: 'e2e-1', package: 'com.example.bank', app: 'Example Bank', title: 'Card payment', text: 'You paid €12.34 at Bistro Uno on 14 Nov.', posted_ms: posted },
+          { key: 'e2e-2', package: 'com.example.bank', app: 'Example Bank', title: 'Money received', text: 'Jane sent you 5,00 €', posted_ms: posted },
+          { key: 'e2e-3', package: 'com.example.bank', app: 'Example Bank', title: 'Security', text: 'Your code is 482913', posted_ms: posted },
+        ],
+      },
+    }),
+  }).then((r) => r.json());
+  assert(ingest.pending === 2 && ingest.ignored === 1, `capture ingest ${JSON.stringify(ingest)}`);
+  await page.getByRole('link', { name: 'Transactions' }).click();
+  await page.reload();
+  const inbox = page.getByRole('list', { name: 'From your bank' });
+  await inbox.waitFor();
+  await inbox.getByText('Bistro Uno', { exact: true }).waitFor();
+  await inbox.getByRole('listitem').filter({ hasText: 'Bistro Uno' }).getByRole('button', { name: 'Add', exact: true }).click();
+  await dialog.waitFor();
+  assert((await dialog.getByLabel(/^Amount/).inputValue()) === '12.34', 'amount prefilled from the notification');
+  assert((await dialog.getByLabel(/^Payee/).inputValue()) === 'Bistro Uno', 'payee prefilled from the notification');
+  await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await page.getByText('4 transactions').waitFor();
+  await page.getByRole('button', { name: /Dismiss: Money received/ }).click();
+  await inbox.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: /Bistro Uno/ }).click();
+  await dialog.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('dialog', { name: 'Delete transaction?' }).getByRole('button', { name: 'Delete' }).click();
+  await page.getByText('3 transactions').waitFor();
+
   // App lock: set a PIN, get a recovery key, lock, fail once, unlock.
   await page.getByRole('link', { name: 'Settings' }).click();
   await page.getByRole('button', { name: 'Set up app lock' }).click();

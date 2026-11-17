@@ -5,6 +5,7 @@
 
 pub mod api;
 pub mod backup;
+pub mod capture;
 pub mod crypto;
 pub mod db;
 pub mod error;

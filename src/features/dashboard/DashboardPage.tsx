@@ -20,6 +20,7 @@ import { formatMoney } from '../../lib/money';
 import { monthKey, trailingMonths } from '../../lib/period';
 import { useQuickAdd } from '../transactions/QuickAdd';
 import { OccurrenceRow } from '../recurring/OccurrenceRow';
+import { CaptureInbox } from '../capture/CaptureInbox';
 
 function pct(bp: number | null): string {
   return bp === null ? '—' : `${(bp / 100).toFixed(1)}%`;
@@ -83,6 +84,8 @@ export function DashboardPage() {
             </Link>
           </div>
         )}
+
+        <CaptureInbox limit={3} />
 
         <section aria-label={t('dashboard.key_figures')} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {balances.isLoading || summary.isLoading ? (

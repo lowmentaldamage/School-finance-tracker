@@ -126,6 +126,12 @@ const NATIVE_METHODS: &[&str] = &[
     "openUrl",
     "takeAuthRedirect",
     "httpRequest",
+    "captureStatus",
+    "captureOpenAccess",
+    "captureConfigure",
+    "captureDrain",
+    "captureAck",
+    "openAppInfo",
 ];
 
 #[tauri::command]

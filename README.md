@@ -69,6 +69,7 @@ Test Builds (Every Push)
 Go to Actions → latest CI run → artifact keel-android (a zip file). Extract it and install keel-test-signed-universal.apk. Test builds use a throwaway key, so they cannot be updated in place (uninstalling removes their data, so back up first).
 Good to Know
  * If you set a PIN, store the recovery key shown during setup. Without the PIN or the recovery key, the data cannot be recovered.
+ * Bank notifications: Settings → Bank notifications → turn on, then allow notification access. On Android 13+ a sideloaded app first needs App info → ⋮ → Allow restricted settings. Pick your bank apps once they have shown a payment notification. New payments then appear under "From your bank" on Overview and Transactions, or are added automatically if you choose an account and tick Add automatically. Only the apps you pick are read, and nothing leaves the phone.
  * Keel sends nothing anywhere unless you connect Dropbox sync. To move data without sync, use Settings → Data → Create backup and restore it on the other phone.
 Building the Android APK Yourself
 Building Android packages requires the Android SDK, NDK 27, and Java 17, with environment variables configured (ANDROID_HOME, NDK_HOME, ANDROID_NDK_ROOT).

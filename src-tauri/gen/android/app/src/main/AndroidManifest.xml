@@ -40,6 +40,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Reads notifications from the bank apps the user picks (off until they grant access). -->
+        <service
+            android:name=".BankListener"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <receiver android:name=".NotifyReceiver" android:exported="false" />
         <receiver android:name=".BootReceiver" android:exported="false">
             <intent-filter>
