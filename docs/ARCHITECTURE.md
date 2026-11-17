@@ -375,6 +375,22 @@ Numbered SQL files are embedded in the binary and applied in one transaction at 
 - **Automatic backups:** weekly when the app is opened, written through the Storage Access Framework to a folder the user picked (persisted permission), keeping the five newest `keel-auto-*.keelbak` files. Encrypted with a stored key derived from a backup password.
 - Restores never overwrite device-local settings (`secret.*`, `sync.*`, `backup.auto.*`).
 
+## 7b. Bank notifications (Android)
+
+- `BankListener` (a `NotificationListenerService`, off until the user grants notification access)
+  reads notifications from the apps the user picked, plus known bank apps (Revolut, NLB Klik).
+  Other apps are never read; only the name of an app that posted a payment-like notification is kept
+  so it can be offered in Settings.
+- Because the database may be locked, the raw title and text are queued in app storage, each entry
+  encrypted with a non-exportable Android Keystore key (AES-256-GCM). While Keel is open and
+  unlocked, `CaptureRunner` reads the queue every few seconds, passes it to `captures.ingest`, and
+  only then removes the entries (peek, then acknowledge).
+- `keel-core/src/capture.rs` parses amount, currency, direction and merchant (English, Slovenian
+  and several other languages), skips codes, statements and balance-only lines, de-duplicates by a
+  hash of the notification, and suggests the category last used for that merchant. Items go to the
+  `captures` table (migration `0002`) as an inbox, or are added as transactions directly when the
+  app is set to "Add automatically" and the currency matches the account.
+
 ## 8. Recurring engine
 
 - When the app starts or unlocks, for each active rule it computes occurrences from `next_due_date` up to today plus 30 days. Skipped ones are excluded.
