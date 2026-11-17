@@ -231,6 +231,10 @@ try {
 } catch (e) {
   if (process.env.E2E_SHOTS && currentPage) await currentPage.screenshot({ path: join(process.env.E2E_SHOTS, 'e2e-failure.png') }).catch(() => {});
   console.error('e2e smoke: FAILED -', e.message.split('\n').slice(0, 3).join(' | '));
+  if (currentPage) {
+    const text = await currentPage.locator('body').innerText().catch(() => '');
+    console.error('--- screen text ---\n' + text.slice(0, 2000));
+  }
   code = 1;
 } finally {
   for (const p of procs) p.kill('SIGTERM');

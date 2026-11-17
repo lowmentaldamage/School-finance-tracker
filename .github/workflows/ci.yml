@@ -46,7 +46,7 @@ jobs:
         run: cargo test -p keel-core
       - name: End-to-end smoke test (browser)
         run: |
-          npm install --no-save playwright
+          npm install --no-save playwright@1.63.0
           npx playwright install --with-deps chromium
           npm run e2e
 
