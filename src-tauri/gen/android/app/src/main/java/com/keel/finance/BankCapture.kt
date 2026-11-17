@@ -77,6 +77,12 @@ object BankCapture {
         prefs(ctx).edit().putString("seen", out.toString()).apply()
     }
 
+    /** Bank apps read without picking them first (Revolut, NLB Klik). */
+    private val KNOWN_BANKS = Regex("(?i)revolut|\\bnlb\\b|nlb ?klik")
+
+    fun isKnownBank(ctx: Context, pkg: String): Boolean =
+        KNOWN_BANKS.containsMatchIn(pkg) || KNOWN_BANKS.containsMatchIn(label(ctx, pkg))
+
     fun label(ctx: Context, pkg: String): String = try {
         val pm = ctx.packageManager
         pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
@@ -126,10 +132,11 @@ object BankCapture {
         val all = "$title\n$text"
         if (!MONEY.containsMatchIn(all)) return
         val pkg = sbn.packageName
-        if (pkg !in packages(ctx)) {
+        if (pkg !in packages(ctx) && !isKnownBank(ctx, pkg)) {
             remember(ctx, pkg)
             return
         }
+        if (pkg !in packages(ctx)) remember(ctx, pkg)
         val item = JSONObject()
             .put("key", sha256("$pkg|${sbn.key}|$title|$text"))
             .put("package", pkg)

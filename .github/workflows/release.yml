@@ -60,11 +60,18 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -z "$KEYSTORE_B64" ]; then
-            echo "Release signing secrets are missing. See README → Release signing." >&2; exit 1
-          fi
           KS="$RUNNER_TEMP/keel-release.p12"
-          echo "$KEYSTORE_B64" | base64 -d > "$KS"
+          if [ -z "$KEYSTORE_B64" ]; then
+            # No signing secrets yet: sign with a one-off key so the APK can still be installed.
+            # Such builds cannot be updated in place; add the secrets for that (README → Release signing).
+            echo "::warning::Signing secrets missing; using a one-off key."
+            echo "ONE_OFF_KEY=1" >> "$GITHUB_ENV"
+            KEYSTORE_PASSWORD=$(openssl rand -hex 16); KEY_PASSWORD=$KEYSTORE_PASSWORD; KEY_ALIAS=keel
+            keytool -genkeypair -keystore "$KS" -storetype PKCS12 -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" \
+              -alias "$KEY_ALIAS" -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Keel" > /dev/null
+          else
+            echo "$KEYSTORE_B64" | base64 -d > "$KS"
+          fi
           {
             echo "storeFile=$KS"
             echo "storePassword=$KEYSTORE_PASSWORD"
@@ -85,6 +92,12 @@ jobs:
           Install: download ${APK} on your phone, open it, allow installs from your browser if asked.
           Update: install over the previous version; your data is kept.
           SHA-256: $(cut -d' ' -f1 "$APK.sha256")"
+          if [ "${ONE_OFF_KEY:-}" = "1" ]; then
+            NOTES="${NOTES}
+
+          Note: this build is signed with a one-off key. To update to a later build, back up first
+          (Settings → Data → Create backup, or Dropbox sync), uninstall, install the new APK and restore."
+          fi
           if gh release view "v${VERSION}" > /dev/null 2>&1; then
             gh release upload "v${VERSION}" "$APK" "$APK.sha256" --clobber
           else

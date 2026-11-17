@@ -687,7 +687,7 @@
     "app_info": "Open App info",
     "access_ok": "Notification access is on",
     "apps": "Bank apps",
-    "apps_hint": "Apps appear here after they show a payment notification. Pick the ones to read.",
+    "apps_hint": "Revolut and NLB Klik are added automatically. Other apps appear here after they show a payment notification.",
     "no_apps": "No payment notifications seen yet. Make a card payment or wait for your bank's next notification, then come back.",
     "account": "Account",
     "ask": "Ask each time",
@@ -704,6 +704,10 @@
     "added_auto_other": "{{count}} payments from your bank were added",
     "new_one": "{{count}} bank notification to review",
     "new_other": "{{count}} bank notifications to review",
-    "review": "Review"
+    "review": "Review",
+    "setup_title": "Log Revolut and NLB payments automatically",
+    "setup_body": "Keel can read the payment notifications from Revolut, NLB Klik and other bank apps on this phone and log them for you. Android asks you once to allow notification access for Keel.",
+    "setup_button": "Turn on",
+    "not_now": "Not now"
   }
 }

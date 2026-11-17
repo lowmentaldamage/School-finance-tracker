@@ -124,6 +124,16 @@ const INCOME_WORDS: &[&str] = &[
     "ingreso",
     "otrzymano",
     "wpływ",
+    // Slovenian (NLB Klik, Revolut in Slovenian)
+    "prejeli ste",
+    "prejeli",
+    "prejeto",
+    "prejem",
+    "priliv",
+    "dobropis",
+    "vračilo",
+    "poslal vam je",
+    "poslala vam je",
 ];
 
 const EXPENSE_WORDS: &[&str] = &[
@@ -155,6 +165,17 @@ const EXPENSE_WORDS: &[&str] = &[
     "pago",
     "płatność",
     "obciążenie",
+    // Slovenian
+    "plačilo",
+    "plačali",
+    "plačano",
+    "obremenitev",
+    "odliv",
+    "nakup",
+    "dvig",
+    "poslali",
+    "bremenitev",
+    "kartica",
 ];
 
 /// Words that mark a number as a balance or limit rather than the amount that moved.
@@ -168,6 +189,8 @@ const BALANCE_WORDS: &[&str] = &[
     "disponible",
     "disponibile",
     "dostępne",
+    "stanje",
+    "razpoložljiv",
 ];
 
 const SYMBOLS: &[(&str, &str)] = &[
@@ -387,10 +410,39 @@ fn direction(lower: &str, sign: Option<bool>) -> TxType {
 }
 
 const PAYEE_STOP: &[&str] = &[
-    " on ", " for ", " using ", " with ", " via ", " am ", " le ", " il ", " el ", " card",
-    " ending", " was ", " has ", " is ", " - ", " – ", " at ", " ref", " mit ", " avec ", " con ",
+    " on ",
+    " for ",
+    " using ",
+    " with ",
+    " via ",
+    " am ",
+    " le ",
+    " il ",
+    " el ",
+    " card",
+    " ending",
+    " was ",
+    " has ",
+    " is ",
+    " - ",
+    " – ",
+    " at ",
+    " ref",
+    " mit ",
+    " avec ",
+    " con ",
+    " dne ",
+    " s kartico",
+    " z kartico",
+    " je ",
+    " v znesku",
 ];
 const PAYEE_REJECT: &[&str] = &[
+    "vaš",
+    "vaši",
+    "račun",
+    "računu",
+    "kartico",
     "your",
     "you",
     "account",
@@ -436,9 +488,20 @@ fn clean_payee(s: &str) -> Option<String> {
 /// Merchant or counterparty: the text after "at" / "to" / "from" (and a few translations).
 fn payee_from(text: &str, ty: TxType) -> Option<String> {
     let preps: &[&str] = match ty {
-        TxType::Income => &[" from ", " von ", " de ", " da ", " od "],
+        TxType::Income => &[" from ", " von ", " de ", " da ", " od ", " plačnik "],
         _ => &[
-            " at ", " to ", " bei ", " an ", " chez ", " à ", " presso ", " en ", " w ",
+            " at ",
+            " to ",
+            " bei ",
+            " an ",
+            " chez ",
+            " à ",
+            " presso ",
+            " en ",
+            " w ",
+            " pri ",
+            " prejemnik ",
+            " na ",
         ],
     };
     let lower = text.to_lowercase();
@@ -866,6 +929,52 @@ mod tests {
         assert_eq!(
             p("Sent", "You sent €50 to Anna Müller"),
             exp(Expense, 5000, "EUR", Some("Anna Müller"))
+        );
+    }
+
+    #[test]
+    fn revolut_and_nlb() {
+        use TxType::*;
+        let q = |title: &str, text: &str, app: &str| parse(title, text, app, "EUR", &known, &minor);
+        assert_eq!(
+            q("Lidl", "Plačali ste 23,45 € s kartico ••1234", "Revolut"),
+            exp(Expense, 2345, "EUR", Some("Lidl"))
+        );
+        assert_eq!(
+            q("", "Prejeli ste 50,00 € od Ana Novak", "Revolut"),
+            exp(Income, 5000, "EUR", Some("Ana Novak"))
+        );
+        assert_eq!(
+            q("Mercator", "Paid €12.30 with Visa", "Revolut"),
+            exp(Expense, 1230, "EUR", Some("Mercator"))
+        );
+        assert_eq!(
+            q(
+                "NLB Klik",
+                "Plačilo s kartico: 18,90 EUR pri PETROL D.D. dne 17.11.2026. Razpoložljivo stanje: 1.204,10 EUR",
+                "NLB Klik"
+            ),
+            exp(Expense, 1890, "EUR", Some("PETROL D.D"))
+        );
+        assert_eq!(
+            q(
+                "NLB Klik",
+                "Priliv na račun: 1.850,00 EUR, plačnik ACME d.o.o.",
+                "NLB Klik"
+            ),
+            exp(Income, 185000, "EUR", Some("ACME d.o.o"))
+        );
+        assert_eq!(
+            q(
+                "NLB Klik",
+                "Obremenitev računa 42,00 EUR, prejemnik Telekom Slovenije",
+                "NLB Klik"
+            ),
+            exp(Expense, 4200, "EUR", Some("Telekom Slovenije"))
+        );
+        assert_eq!(
+            q("NLB Klik", "Vaša enkratna koda je 482913", "NLB Klik"),
+            None
         );
     }
 
