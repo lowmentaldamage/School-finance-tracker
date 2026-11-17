@@ -488,7 +488,17 @@ fn clean_payee(s: &str) -> Option<String> {
 /// Merchant or counterparty: the text after "at" / "to" / "from" (and a few translations).
 fn payee_from(text: &str, ty: TxType) -> Option<String> {
     let preps: &[&str] = match ty {
-        TxType::Income => &[" from ", " von ", " de ", " da ", " od ", " plačnik "],
+        TxType::Income => &[
+            " from ",
+            " von ",
+            " de ",
+            " da ",
+            " od ",
+            " plačnik ",
+            " plačnik: ",
+            " pošiljatelj ",
+            " pošiljatelj: ",
+        ],
         _ => &[
             " at ",
             " to ",
@@ -501,6 +511,11 @@ fn payee_from(text: &str, ty: TxType) -> Option<String> {
             " w ",
             " pri ",
             " prejemnik ",
+            " prejemnik: ",
+            " trgovec ",
+            " trgovec: ",
+            " za ",
+            " osebi ",
             " na ",
         ],
     };
@@ -976,6 +991,109 @@ mod tests {
             q("NLB Klik", "Vaša enkratna koda je 482913", "NLB Klik"),
             None
         );
+    }
+
+    #[test]
+    fn english_and_slovenian_variants() {
+        use TxType::*;
+        let q = |title: &str, text: &str| parse(title, text, "Bank", "EUR", &known, &minor);
+        let cases: Vec<(&str, &str, Option<Parsed>)> = vec![
+            // English
+            (
+                "Card payment",
+                "€4.50 at Costa Coffee",
+                exp(Expense, 450, "EUR", Some("Costa Coffee")),
+            ),
+            (
+                "Payment",
+                "Payment of EUR 19.99 to Netflix",
+                exp(Expense, 1999, "EUR", Some("Netflix")),
+            ),
+            (
+                "Money sent",
+                "You sent €25.00 to Luka",
+                exp(Expense, 2500, "EUR", Some("Luka")),
+            ),
+            (
+                "Money received",
+                "You've received €40.00 from Maja",
+                exp(Income, 4000, "EUR", Some("Maja")),
+            ),
+            (
+                "ATM",
+                "ATM withdrawal of €100.00 at NLB ATM Ljubljana",
+                exp(Expense, 10000, "EUR", Some("NLB ATM Ljubljana")),
+            ),
+            (
+                "Salary",
+                "Incoming payment €2,150.00 from ACME Ltd",
+                exp(Income, 215000, "EUR", Some("ACME Ltd")),
+            ),
+            (
+                "Refund",
+                "Refund of €9.99 from Amazon",
+                exp(Income, 999, "EUR", Some("Amazon")),
+            ),
+            (
+                "Top-up",
+                "€50.00 top-up via Apple Pay",
+                exp(Income, 5000, "EUR", None),
+            ),
+            // Slovenian
+            (
+                "Plačilo s kartico",
+                "4,50 € pri Costa Coffee",
+                exp(Expense, 450, "EUR", Some("Costa Coffee")),
+            ),
+            (
+                "Plačilo",
+                "Plačilo 19,99 € za Netflix",
+                exp(Expense, 1999, "EUR", Some("Netflix")),
+            ),
+            (
+                "Nakazilo",
+                "Poslali ste 25,00 € osebi Luka",
+                exp(Expense, 2500, "EUR", Some("Luka")),
+            ),
+            (
+                "Prejeto",
+                "Prejeli ste 40,00 € od Maja",
+                exp(Income, 4000, "EUR", Some("Maja")),
+            ),
+            (
+                "Dvig gotovine",
+                "Dvig 100,00 EUR na bankomatu NLB Ljubljana",
+                exp(Expense, 10000, "EUR", Some("bankomatu NLB Ljubljana")),
+            ),
+            (
+                "Priliv",
+                "Priliv 2.150,00 EUR, plačnik: ACME d.o.o.",
+                exp(Income, 215000, "EUR", Some("ACME d.o.o")),
+            ),
+            (
+                "Vračilo",
+                "Vračilo 9,99 € od Amazon",
+                exp(Income, 999, "EUR", Some("Amazon")),
+            ),
+            (
+                "NLB Klik",
+                "Nakup 12,40 EUR, trgovec: SPAR SLOVENIJA",
+                exp(Expense, 1240, "EUR", Some("SPAR SLOVENIJA")),
+            ),
+            (
+                "NLB Klik",
+                "Bremenitev 30,00 EUR, prejemnik: Elektro Energija",
+                exp(Expense, 3000, "EUR", Some("Elektro Energija")),
+            ),
+        ];
+        let bad: Vec<String> = cases
+            .into_iter()
+            .filter_map(|(title, text, want)| {
+                let got = q(title, text);
+                (got != want).then(|| format!("{title} / {text}: got {got:?}, want {want:?}"))
+            })
+            .collect();
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
     }
 
     #[test]
