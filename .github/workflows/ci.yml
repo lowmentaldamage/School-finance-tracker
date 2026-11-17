@@ -175,7 +175,7 @@ jobs:
             adb install -r "dist-android/keel-${SIGNING}-signed-universal.apk"
             adb shell am start -W -n com.keel.finance/.MainActivity
             sleep 8
-            adb shell pidof com.keel.finance
+            adb shell pidof com.keel.finance || { adb logcat -d -b crash | tail -80; adb logcat -d | grep -iE "AndroidRuntime|FATAL|keel" | tail -80; exit 1; }
             adb exec-out screencap -p > android-shots/10-release-launch.png
             adb shell uiautomator dump /sdcard/ui.xml >/dev/null && adb shell cat /sdcard/ui.xml | grep -o 'Welcome to Keel' | head -1
             adb shell dumpsys package com.keel.finance | grep -E "android.permission|allowBackup|flags=" | head -20

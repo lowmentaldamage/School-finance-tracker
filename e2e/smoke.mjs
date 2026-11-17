@@ -56,7 +56,8 @@ async function main() {
   await page.goto(UI);
   await page.getByText('Welcome to Keel').waitFor();
   await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByLabel('Name').fill('Main checking');
+  await page.getByText('Add your first account').waitFor();
+  await page.getByLabel('Name', { exact: true }).fill('Main checking');
   await page.getByLabel('Current balance').fill('1.000,00');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByText('Lock Keel').waitFor();
